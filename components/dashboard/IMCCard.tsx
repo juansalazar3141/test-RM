@@ -15,12 +15,12 @@ export function IMCCard({ imc, classification }: IMCCardProps) {
   const safeIMC = Number.isFinite(imc) && imc > 0 ? imc.toFixed(1) : "--";
 
   return (
-    <section className="rounded-2xl border border-white/8 bg-bg-soft p-5">
+    <section className="rounded-2xl border border-gray-200 bg-bg-soft p-5 dark:border-white/8">
       <p className="text-xs uppercase tracking-[0.12em] text-text-tertiary">
         Indice de masa corporal
       </p>
       <div className="mt-3 flex items-end justify-between gap-3">
-        <p className="text-5xl font-semibold leading-none tracking-tight text-white">
+        <p className="text-5xl font-semibold leading-none tracking-tight text-text-primary dark:text-white">
           {safeIMC}
         </p>
         <span

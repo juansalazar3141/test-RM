@@ -162,13 +162,15 @@ export default async function DashboardPage({
   return (
     <main className="space-y-8 pb-20">
       <header className="space-y-4">
-        <h1 className="text-xl font-semibold tracking-tight text-white">Hoy</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
+          Hoy
+        </h1>
         <p className="text-sm text-text-secondary">
           {latestSession
             ? `Ultima sesion: ${formatDaysAgo(latestSession.createdAt)}`
             : "Ultima sesion: sin registros"}
         </p>
-        <div className="grid grid-cols-1 gap-1 rounded-xl border border-white/6 bg-bg-soft px-4 py-3 sm:grid-cols-3 sm:gap-4">
+        <div className="grid grid-cols-1 gap-1 rounded-xl border border-gray-200 bg-bg-soft px-4 py-3 sm:grid-cols-3 sm:gap-4 dark:border-white/6">
           <MetricRow label="Identificacion" value={persona.cc} compact />
           <MetricRow
             label="Peso"
@@ -193,7 +195,7 @@ export default async function DashboardPage({
             Registra al menos dos sesiones para comparar avance.
           </p>
         ) : (
-          <div className="divide-y divide-white/6">
+          <div className="divide-y divide-gray-200 dark:divide-white/6">
             {progress.slice(0, 6).map((item) => (
               <MetricRow
                 key={item.nombre}
@@ -232,7 +234,10 @@ export default async function DashboardPage({
         </PrimaryButton>
       </div>
 
-      <PrimaryButton href="/" className="bg-bg-main text-text-secondary">
+      <PrimaryButton
+        href="/"
+        className="bg-bg-main text-text-secondary dark:bg-bg-main dark:text-text-secondary"
+      >
         Cambiar usuario
       </PrimaryButton>
 

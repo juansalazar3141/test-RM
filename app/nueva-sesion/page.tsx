@@ -84,13 +84,13 @@ export default async function NuevaSesionPage({
   return (
     <main className="space-y-8 pb-10">
       <header className="space-y-2">
-        <h1 className="text-xl font-semibold tracking-tight text-white">
+        <h1 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
           Nueva sesion
         </h1>
       </header>
 
       {error ? (
-        <p className="rounded-xl border border-white/6 bg-bg-soft px-4 py-3 text-sm text-text-secondary">
+        <p className="rounded-xl border border-gray-200 bg-bg-soft px-4 py-3 text-sm text-text-secondary dark:border-white/6">
           {error}
         </p>
       ) : null}
@@ -100,7 +100,7 @@ export default async function NuevaSesionPage({
         <input type="hidden" name="requestId" value={requestId} />
 
         <Section title="Ejercicios">
-          <div className="divide-y divide-white/6">
+          <div className="divide-y divide-gray-200 dark:divide-white/6">
             {ejercicios.map((ejercicio) => (
               <label
                 key={ejercicio.id}
@@ -108,7 +108,9 @@ export default async function NuevaSesionPage({
                 className="flex items-end justify-between gap-4 py-4"
               >
                 <div className="space-y-1">
-                  <p className="text-base text-white">{ejercicio.nombre}</p>
+                  <p className="text-base text-text-primary dark:text-white">
+                    {ejercicio.nombre}
+                  </p>
                   <p className="text-xs uppercase tracking-wide text-text-tertiary">
                     carga base {formatWeight(getCargaBase(ejercicio))} kg
                   </p>
@@ -123,7 +125,7 @@ export default async function NuevaSesionPage({
                     step="1"
                     defaultValue="0"
                     inputMode="numeric"
-                    className="w-20 border-0 bg-transparent p-0 text-right text-3xl font-semibold leading-none tracking-tight text-white outline-none"
+                    className="w-20 border-0 bg-transparent p-0 text-right text-3xl font-semibold leading-none tracking-tight text-text-primary outline-none dark:text-white"
                   />
                   <p className="mt-1 text-xs uppercase tracking-wide text-text-tertiary">
                     reps

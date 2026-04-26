@@ -53,25 +53,25 @@ export function ICCSection({ cc, cintura, cadera }: ICCSectionProps) {
       </h2>
 
       {!iccSummary ? (
-        <div className="rounded-2xl border border-white/8 bg-bg-soft p-5">
-          <h3 className="text-lg font-semibold tracking-tight text-white">
+        <div className="rounded-2xl border border-gray-200 bg-bg-soft p-5 dark:border-white/8">
+          <h3 className="text-lg font-semibold tracking-tight text-text-primary dark:text-white">
             Calcula tu indice cintura-cadera (ICC)
           </h3>
           <button
             type="button"
             onClick={() => setIsOpen(true)}
-            className="mt-4 inline-flex w-full items-center justify-center rounded-xl border border-white/6 bg-bg-main px-4 py-3 text-base font-medium tracking-tight text-white"
+            className="mt-4 inline-flex w-full items-center justify-center rounded-xl border border-gray-200 bg-bg-main px-4 py-3 text-base font-medium tracking-tight text-text-primary shadow-sm dark:border-white/6 dark:text-white dark:shadow-none"
           >
             Calcular
           </button>
         </div>
       ) : (
-        <div className="rounded-2xl border border-white/8 bg-bg-soft p-5">
+        <div className="rounded-2xl border border-gray-200 bg-bg-soft p-5 dark:border-white/8">
           <p className="text-xs uppercase tracking-[0.12em] text-text-tertiary">
             Indice cintura-cadera
           </p>
           <div className="mt-3 flex items-end justify-between gap-3">
-            <p className="text-5xl font-semibold leading-none tracking-tight text-white">
+            <p className="text-5xl font-semibold leading-none tracking-tight text-text-primary dark:text-white">
               {iccSummary.icc.toFixed(2)}
             </p>
             <span
@@ -99,14 +99,14 @@ export function ICCSection({ cc, cintura, cadera }: ICCSectionProps) {
         title="Calcular ICC"
       >
         <div className="space-y-6">
-          <article className="space-y-2 rounded-xl border border-white/8 bg-bg-soft p-4">
+          <article className="space-y-2 rounded-xl border border-gray-200 bg-bg-soft p-4 dark:border-white/8">
             <p className="text-xs uppercase tracking-wide text-text-tertiary">
               Paso 1
             </p>
-            <h4 className="text-base font-semibold text-white">
+            <h4 className="text-base font-semibold text-text-primary dark:text-white">
               Como medir tu cintura
             </h4>
-            <div className="overflow-hidden rounded-lg border border-white/10 bg-white/5">
+            <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-white/5">
               <Image
                 src="/cintura.png"
                 alt="Instructivo de como medir la cintura con cinta metrica"
@@ -119,14 +119,14 @@ export function ICCSection({ cc, cintura, cadera }: ICCSectionProps) {
             </div>
           </article>
 
-          <article className="space-y-2 rounded-xl border border-white/8 bg-bg-soft p-4">
+          <article className="space-y-2 rounded-xl border border-gray-200 bg-bg-soft p-4 dark:border-white/8">
             <p className="text-xs uppercase tracking-wide text-text-tertiary">
               Paso 2
             </p>
-            <h4 className="text-base font-semibold text-white">
+            <h4 className="text-base font-semibold text-text-primary dark:text-white">
               Como medir tu cadera
             </h4>
-            <div className="overflow-hidden rounded-lg border border-white/10 bg-white/5">
+            <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-white/5">
               <Image
                 src="/cadera.png"
                 alt="Instructivo de como medir la cadera con cinta metrica"
@@ -139,11 +139,11 @@ export function ICCSection({ cc, cintura, cadera }: ICCSectionProps) {
             </div>
           </article>
 
-          <article className="space-y-3 rounded-xl border border-white/8 bg-bg-soft p-4">
+          <article className="space-y-3 rounded-xl border border-gray-200 bg-bg-soft p-4 dark:border-white/8">
             <p className="text-xs uppercase tracking-wide text-text-tertiary">
               Paso 3
             </p>
-            <h4 className="text-base font-semibold text-white">
+            <h4 className="text-base font-semibold text-text-primary dark:text-white">
               Ingresa tus medidas
             </h4>
             <ICCForm

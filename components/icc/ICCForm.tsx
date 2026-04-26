@@ -160,7 +160,7 @@ export function ICCForm({
           inputMode="decimal"
           value={cintura}
           onChange={(event) => setCintura(event.target.value)}
-          className="w-full rounded-xl border border-white/10 bg-bg-soft px-4 py-3 text-base text-white outline-none placeholder:text-text-tertiary"
+          className="w-full rounded-xl border border-gray-200 bg-bg-soft px-4 py-3 text-base text-text-primary outline-none placeholder:text-text-tertiary focus:border-gray-300 dark:border-white/10 dark:text-white dark:focus:border-white/15"
           placeholder="Ej: 78"
         />
         {errors.cintura ? (
@@ -182,7 +182,7 @@ export function ICCForm({
           inputMode="decimal"
           value={cadera}
           onChange={(event) => setCadera(event.target.value)}
-          className="w-full rounded-xl border border-white/10 bg-bg-soft px-4 py-3 text-base text-white outline-none placeholder:text-text-tertiary"
+          className="w-full rounded-xl border border-gray-200 bg-bg-soft px-4 py-3 text-base text-text-primary outline-none placeholder:text-text-tertiary focus:border-gray-300 dark:border-white/10 dark:text-white dark:focus:border-white/15"
           placeholder="Ej: 95"
         />
         {errors.cadera ? (
@@ -190,11 +190,11 @@ export function ICCForm({
         ) : null}
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-bg-soft px-4 py-3">
+      <div className="rounded-xl border border-gray-200 bg-bg-soft px-4 py-3 dark:border-white/10">
         <p className="text-xs uppercase tracking-wide text-text-tertiary">
           ICC
         </p>
-        <p className="mt-1 text-3xl font-semibold tracking-tight text-white">
+        <p className="mt-1 text-3xl font-semibold tracking-tight text-text-primary dark:text-white">
           {liveICC ? liveICC.value.toFixed(2) : "--"}
         </p>
         {liveICC ? (
@@ -217,7 +217,7 @@ export function ICCForm({
       <button
         type="submit"
         disabled={isSubmitting}
-        className="inline-flex w-full items-center justify-center rounded-xl border border-white/6 bg-bg-soft px-4 py-3 text-base font-medium tracking-tight text-white disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex w-full items-center justify-center rounded-xl border border-gray-200 bg-bg-soft px-4 py-3 text-base font-medium tracking-tight text-text-primary shadow-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/6 dark:text-white dark:shadow-none"
       >
         {isSubmitting ? "Guardando..." : "Guardar medidas y calcular ICC"}
       </button>

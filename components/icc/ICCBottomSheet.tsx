@@ -59,20 +59,20 @@ export function ICCBottomSheet({
           event.stopPropagation();
         }}
         className={[
-          "absolute inset-x-0 bottom-0 max-h-[92vh] rounded-t-3xl border-t border-white/10 bg-bg-main",
+          "absolute inset-x-0 bottom-0 max-h-[92vh] rounded-t-3xl border-t border-gray-200 bg-bg-main dark:border-white/10",
           "transition-transform duration-300 ease-out",
           isOpen ? "translate-y-0" : "translate-y-full",
         ].join(" ")}
       >
-        <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-white/20" />
+        <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-gray-300 dark:bg-white/20" />
         <div className="flex items-center justify-between px-4 pb-3 pt-4">
-          <h3 className="text-base font-semibold tracking-tight text-white">
+          <h3 className="text-base font-semibold tracking-tight text-text-primary dark:text-white">
             {title}
           </h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-text-secondary"
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-text-secondary dark:border-white/10"
           >
             Cerrar
           </button>

@@ -103,14 +103,14 @@ export default function AdminPanel({ personas }: AdminPanelProps) {
       <header className="space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight text-white">
+            <h1 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
               Admin
             </h1>
             <p className="text-sm text-text-secondary">Personas registradas</p>
           </div>
           <Link
             href="/"
-            className="inline-flex h-10 items-center justify-center rounded-xl border border-white/6 bg-bg-soft px-4 text-sm font-medium tracking-tight text-white transition duration-200 active:bg-bg-subtle"
+            className="inline-flex h-10 items-center justify-center rounded-xl border border-gray-200 bg-bg-soft px-4 text-sm font-medium tracking-tight text-text-primary shadow-sm transition duration-200 active:bg-bg-subtle dark:border-white/6 dark:text-white dark:shadow-none"
           >
             Volver al home
           </Link>
@@ -135,7 +135,7 @@ export default function AdminPanel({ personas }: AdminPanelProps) {
             setPage(1);
           }}
           placeholder="Buscar por nombre o CC"
-          className="w-full rounded-xl border border-white/6 bg-bg-soft px-4 py-3 text-base text-white outline-none placeholder:text-text-tertiary focus:border-white/15"
+          className="w-full rounded-xl border border-gray-200 bg-bg-soft px-4 py-3 text-base text-text-primary outline-none placeholder:text-text-tertiary focus:border-gray-300 dark:border-white/6 dark:text-white dark:focus:border-white/15"
         />
       </Section>
 
@@ -149,9 +149,11 @@ export default function AdminPanel({ personas }: AdminPanelProps) {
                 setSelectedPersonaId(persona.id);
                 setExpandedSesionId(persona.sesiones[0]?.id ?? null);
               }}
-              className="w-full rounded-xl border border-white/6 bg-bg-soft px-4 py-3 text-left transition duration-200 active:bg-bg-subtle"
+              className="w-full rounded-xl border border-gray-200 bg-bg-soft px-4 py-3 text-left transition duration-200 active:bg-bg-subtle dark:border-white/6"
             >
-              <p className="text-base text-white">{persona.nombre}</p>
+              <p className="text-base text-text-primary dark:text-white">
+                {persona.nombre}
+              </p>
               <MetricRow label="CC" value={persona.cc} compact />
               <MetricRow label="Edad" value={`${persona.edad}`} compact />
               <MetricRow
@@ -201,12 +203,12 @@ export default function AdminPanel({ personas }: AdminPanelProps) {
           }}
         >
           <div
-            className="modal-scroll max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/6 bg-bg-main p-5"
+            className="modal-scroll max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-gray-200 bg-bg-main p-5 dark:border-white/6"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-5 flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-xl font-semibold tracking-tight text-white">
+                <h2 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
                   {selectedPersona.nombre}
                 </h2>
                 <p className="text-sm text-text-secondary">
@@ -221,7 +223,7 @@ export default function AdminPanel({ personas }: AdminPanelProps) {
                   setSelectedPersonaId(null);
                   setExpandedSesionId(null);
                 }}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/6 bg-bg-soft text-lg text-white transition duration-200 active:bg-bg-subtle"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-bg-soft text-lg text-text-primary shadow-sm transition duration-200 active:bg-bg-subtle dark:border-white/6 dark:text-white dark:shadow-none"
               >
                 ✕
               </button>
@@ -232,7 +234,7 @@ export default function AdminPanel({ personas }: AdminPanelProps) {
                 {selectedPersona.sesiones.map((sesion) => (
                   <article
                     key={sesion.id}
-                    className="space-y-3 rounded-xl border border-white/6 bg-bg-soft px-4 py-3"
+                    className="space-y-3 rounded-xl border border-gray-200 bg-bg-soft px-4 py-3 dark:border-white/6"
                     onClick={(event) => event.stopPropagation()}
                   >
                     <button
@@ -255,13 +257,13 @@ export default function AdminPanel({ personas }: AdminPanelProps) {
                     </button>
 
                     {expandedSesionId === sesion.id ? (
-                      <div className="space-y-3 border-t border-white/6 pt-3">
+                      <div className="space-y-3 border-t border-gray-200 pt-3 dark:border-white/6">
                         {sesion.resultados.map((resultado) => (
                           <div
                             key={resultado.id}
-                            className="space-y-1 rounded-lg border border-white/6 bg-bg-main px-3 py-2"
+                            className="space-y-1 rounded-lg border border-gray-200 bg-bg-main px-3 py-2 dark:border-white/6"
                           >
-                            <p className="text-sm text-white">
+                            <p className="text-sm text-text-primary dark:text-white">
                               {resultado.ejercicio}
                             </p>
                             <MetricRow
