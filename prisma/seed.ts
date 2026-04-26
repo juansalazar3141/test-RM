@@ -1,4 +1,5 @@
 import "dotenv/config";
+import bcrypt from "bcrypt";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 
@@ -8,6 +9,8 @@ if (!process.env.DATABASE_URL) {
 
 const adapter = new PrismaMariaDb(process.env.DATABASE_URL);
 const prisma = new PrismaClient({ adapter });
+const DEFAULT_ADMIN_USERNAME = "admin";
+const DEFAULT_ADMIN_PASSWORD = "admin1234";
 
 const ejercicios = [
   {
@@ -66,7 +69,22 @@ async function main() {
     });
   }
 
-  console.log(`Seed completed: ${ejercicios.length} ejercicios upserted.`);
+  const hashedPassword = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 12);
+
+  await prisma.user.upsert({
+    where: {
+      username: DEFAULT_ADMIN_USERNAME,
+    },
+    update: {},
+    create: {
+      username: DEFAULT_ADMIN_USERNAME,
+      password: hashedPassword,
+    },
+  });
+
+  console.log(
+    `Seed completed: ${ejercicios.length} ejercicios upserted and default admin ensured.`,
+  );
 }
 
 main()

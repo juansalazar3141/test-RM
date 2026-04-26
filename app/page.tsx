@@ -27,13 +27,9 @@ export default function HomePage() {
     }
   }, [router, state.redirectTo]);
 
-  useEffect(() => {
-    if (state.submittedCC) {
-      setCedula(state.submittedCC);
-    }
-  }, [state.submittedCC]);
+  const displayedCedula = cedula || state.submittedCC;
 
-  const isDisabled = cedula.trim().length === 0 || isPending;
+  const isDisabled = displayedCedula.trim().length === 0 || isPending;
 
   return (
     <main
@@ -62,7 +58,7 @@ export default function HomePage() {
                 id="cedula"
                 name="cc"
                 placeholder="Ingresa tu cédula"
-                value={cedula}
+                value={displayedCedula}
                 onChange={(event: ChangeEvent<HTMLInputElement>) =>
                   setCedula(event.target.value)
                 }

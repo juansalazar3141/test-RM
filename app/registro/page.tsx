@@ -86,7 +86,11 @@ export default function RegistroPage({
               </select>
             </Section>
 
-            <Section title="Masa corporal" className="space-y-2">
+            <Section
+              title="Masa corporal"
+              hint="Ingresa kg o libras. Si el valor es mayor que 150, se interpreta como libras."
+              className="space-y-2"
+            >
               <input
                 id="masaCorporal"
                 name="masaCorporal"
@@ -97,10 +101,6 @@ export default function RegistroPage({
                 className="w-full rounded-xl border border-gray-200 bg-bg-soft px-4 py-4 text-base text-text-primary outline-none placeholder:text-text-tertiary focus:border-gray-300 dark:border-white/6 dark:text-white dark:focus:border-white/15"
                 required
               />
-              <p className="text-xs text-text-tertiary">
-                Ingresa kg o libras. Si el valor es mayor que 150, se interpreta
-                como libras.
-              </p>
             </Section>
 
             <Section title="Edad" className="space-y-2">
@@ -115,7 +115,11 @@ export default function RegistroPage({
               />
             </Section>
 
-            <Section title="Talla" className="space-y-2">
+            <Section
+              title="Talla"
+              hint="Ingresa metros o centimetros. Si el valor es mayor que 3, se interpreta como centimetros."
+              className="space-y-2"
+            >
               <input
                 id="talla"
                 name="talla"
@@ -126,10 +130,6 @@ export default function RegistroPage({
                 className="w-full rounded-xl border border-gray-200 bg-bg-soft px-4 py-4 text-base text-text-primary outline-none placeholder:text-text-tertiary focus:border-gray-300 dark:border-white/6 dark:text-white dark:focus:border-white/15"
                 required
               />
-              <p className="text-xs text-text-tertiary">
-                Ingresa metros o centimetros. Si el valor es mayor que 3, se
-                interpreta como centimetros.
-              </p>
             </Section>
 
             <div className="sm:col-span-2">

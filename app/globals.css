@@ -31,6 +31,7 @@
   --color-text-secondary: var(--text-secondary);
   --color-text-tertiary: var(--text-tertiary);
   --color-accent: var(--accent);
+  --color-border-subtle: var(--border-subtle);
   --font-sans: var(--font-inter);
 }
 

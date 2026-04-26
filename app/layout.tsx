@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { AppThemeToggle } from "../components/ui/AppThemeToggle";
+import { ensureDefaultAdminUser } from "@/lib/bootstrap";
 import "./globals.css";
 
 const inter = Inter({
@@ -18,6 +19,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  void ensureDefaultAdminUser();
+
   return (
     <html lang="es" className={`${inter.variable} h-full antialiased dark`}>
       <body className="min-h-full bg-white font-sans text-gray-900 selection:bg-accent/25 dark:bg-bg-main dark:text-white">

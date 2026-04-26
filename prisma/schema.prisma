@@ -87,3 +87,10 @@ model AdminOtp {
   @@index([code, used, expiresAt])
   @@index([createdAt])
 }
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now())
+}

@@ -4,7 +4,7 @@ objetivos:
 2. calcular el imc de la persona ✅
 3. calcular el icc de la persona (cm) ✅
 4. indicadores -> instrucciones 
-5. tests de casa y nacleiro
+5. tests de casa y nacleiro 
 7. traducción ingles, portugués y español
 
 vistas: 
