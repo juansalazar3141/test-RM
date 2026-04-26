@@ -116,6 +116,7 @@ export default async function SesionDetailPage({
         </h1>
         <p className="text-sm text-text-secondary">
           {formatSessionDate(sesion.createdAt)}
+          {sesion.peso ? ` · Peso: ${formatNumber(sesion.peso)} kg` : null}
         </p>
       </header>
 

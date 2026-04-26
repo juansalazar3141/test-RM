@@ -39,6 +39,7 @@ model Ejercicio {
 model Sesion {
   id        Int      @id @default(autoincrement())
   personaId Int
+  peso      Float?
   requestId String?  @unique
   createdAt DateTime @default(now())
 
