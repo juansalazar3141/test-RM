@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 
+import { getPorcentajeMasa } from "@/helpers/calculations";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
 import { createSesionAction } from "@/actions/sesion";
@@ -54,6 +55,7 @@ export default async function NuevaSesionPage({
     select: {
       id: true,
       masaCorporal: true,
+      sexo: true,
     },
   });
 
@@ -61,16 +63,23 @@ export default async function NuevaSesionPage({
     redirect("/");
   }
 
+  const personaSafe = persona;
+
   const ejercicios = await prisma.ejercicio.findMany({
     select: {
       id: true,
       nombre: true,
-      porcentajeMasa: true,
+      porcentajeMasaHombre: true,
+      porcentajeMasaMujer: true,
     },
     orderBy: {
       id: "asc",
     },
   });
+
+  function getCargaBase(ejercicio: (typeof ejercicios)[number]) {
+    return personaSafe.masaCorporal * getPorcentajeMasa(personaSafe, ejercicio);
+  }
 
   return (
     <main className="space-y-8 pb-10">
@@ -101,11 +110,7 @@ export default async function NuevaSesionPage({
                 <div className="space-y-1">
                   <p className="text-base text-white">{ejercicio.nombre}</p>
                   <p className="text-xs uppercase tracking-wide text-text-tertiary">
-                    carga base{" "}
-                    {formatWeight(
-                      persona.masaCorporal * ejercicio.porcentajeMasa,
-                    )}{" "}
-                    kg
+                    carga base {formatWeight(getCargaBase(ejercicio))} kg
                   </p>
                 </div>
 

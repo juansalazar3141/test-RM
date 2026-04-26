@@ -12,6 +12,8 @@ model Persona {
   nombre       String
   sexo         String
   masaCorporal Float
+  cintura      Float?
+  cadera       Float?
   edad         Int
   talla        Float
   entrenado    Boolean
@@ -24,9 +26,10 @@ model Persona {
 }
 
 model Ejercicio {
-  id             Int    @id
-  nombre         String
-  porcentajeMasa Float
+  id                   Int    @id
+  nombre               String
+  porcentajeMasaHombre Float
+  porcentajeMasaMujer  Float
 
   resultados ResultadoEjercicio[]
 
@@ -61,6 +64,8 @@ model ResultadoEjercicio {
   mayhew   Float
   wathen   Float
   baechle  Float
+  casas    Float
+  nacleiro Float
 
   createdAt DateTime @default(now())
 

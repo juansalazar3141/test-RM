@@ -97,6 +97,10 @@ export default function RegistroPage({
                 className="w-full rounded-xl border border-white/6 bg-bg-soft px-4 py-4 text-base text-white outline-none placeholder:text-text-tertiary focus:border-white/15"
                 required
               />
+              <p className="text-xs text-text-tertiary">
+                Ingresa kg o libras. Si el valor es mayor que 150, se interpreta
+                como libras.
+              </p>
             </Section>
 
             <Section title="Edad" className="space-y-2">
@@ -122,6 +126,10 @@ export default function RegistroPage({
                 className="w-full rounded-xl border border-white/6 bg-bg-soft px-4 py-4 text-base text-white outline-none placeholder:text-text-tertiary focus:border-white/15"
                 required
               />
+              <p className="text-xs text-text-tertiary">
+                Ingresa metros o centimetros. Si el valor es mayor que 3, se
+                interpreta como centimetros.
+              </p>
             </Section>
 
             <div className="sm:col-span-2">

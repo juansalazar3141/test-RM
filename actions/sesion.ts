@@ -227,7 +227,8 @@ export async function createSesion(
       const ejerciciosDB = await tx.ejercicio.findMany({
         select: {
           id: true,
-          porcentajeMasa: true,
+          porcentajeMasaHombre: true,
+          porcentajeMasaMujer: true,
         },
       });
 
@@ -260,6 +261,8 @@ export async function createSesion(
           mayhew: roundToTwo(Number.isFinite(item.mayhew) ? item.mayhew : 0),
           wathen: roundToTwo(Number.isFinite(item.wathen) ? item.wathen : 0),
           baechle: roundToTwo(Number.isFinite(item.baechle) ? item.baechle : 0),
+          casas: 0,
+          nacleiro: 0,
         }));
 
       if (resultadosData.length === 0) {

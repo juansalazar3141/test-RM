@@ -2,11 +2,14 @@ import { redirect } from "next/navigation";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 
+import { ICCSection } from "@/components/dashboard/ICCSection";
+import { IMCCard } from "@/components/dashboard/IMCCard";
 import { FloatingActionButton } from "@/components/ui/FloatingActionButton";
 import { ListItem } from "@/components/ui/ListItem";
 import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
+import { calculateIMC, getIMCClassification } from "@/helpers/calculations";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -121,6 +124,8 @@ export default async function DashboardPage({
       cc: true,
       masaCorporal: true,
       talla: true,
+      cintura: true,
+      cadera: true,
     },
   });
 
@@ -151,6 +156,8 @@ export default async function DashboardPage({
 
   const progress = getProgressSummary(sesiones);
   const latestSession = sesiones[0];
+  const imc = calculateIMC(persona);
+  const imcClassification = getIMCClassification(imc);
 
   return (
     <main className="space-y-8 pb-20">
@@ -175,6 +182,10 @@ export default async function DashboardPage({
           />
         </div>
       </header>
+
+      <IMCCard imc={imc} classification={imcClassification} />
+
+      <ICCSection cc={cc} cintura={persona.cintura} cadera={persona.cadera} />
 
       <Section title="Progreso inteligente">
         {progress.length === 0 ? (
