@@ -5,6 +5,8 @@ CREATE TABLE `Persona` (
     `nombre` VARCHAR(191) NOT NULL,
     `sexo` VARCHAR(191) NOT NULL,
     `masaCorporal` DOUBLE NOT NULL,
+    `cintura` DOUBLE NULL,
+    `cadera` DOUBLE NULL,
     `edad` INTEGER NOT NULL,
     `talla` DOUBLE NOT NULL,
     `entrenado` BOOLEAN NOT NULL,
@@ -20,7 +22,8 @@ CREATE TABLE `Persona` (
 CREATE TABLE `Ejercicio` (
     `id` INTEGER NOT NULL,
     `nombre` VARCHAR(191) NOT NULL,
-    `porcentajeMasa` DOUBLE NOT NULL,
+    `porcentajeMasaHombre` DOUBLE NOT NULL,
+    `porcentajeMasaMujer` DOUBLE NOT NULL,
 
     INDEX `Ejercicio_nombre_idx`(`nombre`),
     PRIMARY KEY (`id`)
@@ -30,8 +33,11 @@ CREATE TABLE `Ejercicio` (
 CREATE TABLE `Sesion` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `personaId` INTEGER NOT NULL,
+    `peso` DOUBLE NULL,
+    `requestId` VARCHAR(191) NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
+    UNIQUE INDEX `Sesion_requestId_key`(`requestId`),
     INDEX `Sesion_personaId_createdAt_idx`(`personaId`, `createdAt`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -51,10 +57,38 @@ CREATE TABLE `ResultadoEjercicio` (
     `mayhew` DOUBLE NOT NULL,
     `wathen` DOUBLE NOT NULL,
     `baechle` DOUBLE NOT NULL,
+    `casas` DOUBLE NOT NULL,
+    `nacleiro` DOUBLE NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     INDEX `ResultadoEjercicio_sesionId_createdAt_idx`(`sesionId`, `createdAt`),
     INDEX `ResultadoEjercicio_ejercicioId_idx`(`ejercicioId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `AdminOtp` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `requestId` VARCHAR(191) NULL,
+    `code` VARCHAR(191) NOT NULL,
+    `expiresAt` DATETIME(3) NOT NULL,
+    `used` BOOLEAN NOT NULL DEFAULT false,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    UNIQUE INDEX `AdminOtp_requestId_key`(`requestId`),
+    INDEX `AdminOtp_code_used_expiresAt_idx`(`code`, `used`, `expiresAt`),
+    INDEX `AdminOtp_createdAt_idx`(`createdAt`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `User` (
+    `id` VARCHAR(191) NOT NULL,
+    `username` VARCHAR(191) NOT NULL,
+    `password` VARCHAR(191) NOT NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    UNIQUE INDEX `User_username_key`(`username`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
