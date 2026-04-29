@@ -144,15 +144,6 @@ export default async function SesionDetailPage({
                   </p>
                 </header>
 
-                <div className="space-y-1 text-center">
-                  <p className="text-sm uppercase tracking-wide text-text-secondary">
-                    RM estimado
-                  </p>
-                  <p className="text-3xl font-semibold tracking-tight text-accent">
-                    {formatNumber(estimatedRM)} kg
-                  </p>
-                </div>
-
                 <Section title="Formulas" className="space-y-2">
                   <div className="space-y-0.5">
                     <MetricRow

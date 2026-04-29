@@ -122,6 +122,8 @@ export default async function DashboardPage({
     select: {
       id: true,
       cc: true,
+      nombre: true,
+      sexo: true,
       masaCorporal: true,
       talla: true,
       cintura: true,
@@ -187,7 +189,7 @@ export default async function DashboardPage({
 
       <IMCCard imc={imc} classification={imcClassification} />
 
-      <ICCSection cc={cc} cintura={persona.cintura} cadera={persona.cadera} />
+      <ICCSection cc={cc} sexo={persona.sexo as "hombre" | "mujer" | "masculino" | "femenino"} cintura={persona.cintura} cadera={persona.cadera} />
 
       <Section title="Progreso inteligente">
         {progress.length === 0 ? (

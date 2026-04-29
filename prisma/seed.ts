@@ -17,19 +17,19 @@ const ejercicios = [
     id: 1,
     nombre: "curl de biceps",
     porcentajeMasaHombre: 0.35,
-    porcentajeMasaMujer: 0.35,
+    porcentajeMasaMujer: 0.18,
   },
   {
     id: 2,
     nombre: "press de pierna",
     porcentajeMasaHombre: 0.65,
-    porcentajeMasaMujer: 0.65,
+    porcentajeMasaMujer: 0.50,
   },
   {
     id: 3,
     nombre: "polea alta",
     porcentajeMasaHombre: 0.7,
-    porcentajeMasaMujer: 0.7,
+    porcentajeMasaMujer: 0.45,
   },
   {
     id: 4,
@@ -41,13 +41,13 @@ const ejercicios = [
     id: 5,
     nombre: "press pecho",
     porcentajeMasaHombre: 0.75,
-    porcentajeMasaMujer: 0.75,
+    porcentajeMasaMujer: 0.45,
   },
   {
     id: 6,
     nombre: "curl biceps femoral",
     porcentajeMasaHombre: 0.32,
-    porcentajeMasaMujer: 0.32,
+    porcentajeMasaMujer: 0.25,
   },
 ] as const;
 

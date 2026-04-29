@@ -13,6 +13,7 @@ import { ICCForm } from "@/components/icc/ICCForm";
 
 type ICCSectionProps = {
   cc: string;
+  sexo: "hombre" | "mujer" | "masculino" | "femenino" | null;
   cintura: number | null;
   cadera: number | null;
 };
@@ -23,7 +24,7 @@ const badgeColorClass: Record<HealthClassification["color"], string> = {
   rojo: "bg-red-500/20 text-red-300 border-red-500/30",
 };
 
-export function ICCSection({ cc, cintura, cadera }: ICCSectionProps) {
+export function ICCSection({ cc, sexo, cintura, cadera }: ICCSectionProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [savedMeasures, setSavedMeasures] = useState({
     cintura,
@@ -148,6 +149,7 @@ export function ICCSection({ cc, cintura, cadera }: ICCSectionProps) {
             </h4>
             <ICCForm
               cc={cc}
+              sexo={sexo}
               initialCintura={savedMeasures.cintura}
               initialCadera={savedMeasures.cadera}
               onSuccess={(data) => {

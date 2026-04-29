@@ -12,9 +12,11 @@ import {
   CIRCUMFERENCE_MIN_CM,
   MedidasValidationErrors,
 } from "@/helpers/validators";
+import { ICCTable } from "./ICCTable";
 
 type ICCFormProps = {
   cc: string;
+  sexo?: "hombre" | "mujer" | "masculino" | "femenino" | null;
   initialCintura?: number | null;
   initialCadera?: number | null;
   onSuccess: (data: {
@@ -49,6 +51,7 @@ function getFieldError(label: string, value: number): string | null {
 
 export function ICCForm({
   cc,
+  sexo,
   initialCintura,
   initialCadera,
   onSuccess,
@@ -207,6 +210,12 @@ export function ICCForm({
           </p>
         )}
       </div>
+
+      {liveICC && (
+        <div className="mt-4">
+          <ICCTable sexo={sexo} icc={liveICC.value} />
+        </div>
+      )}
 
       {errors.form ? (
         <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
