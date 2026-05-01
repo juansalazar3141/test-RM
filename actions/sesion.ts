@@ -364,9 +364,10 @@ export async function createSesionAction(formData: FormData) {
   }
 
   let saveError: string | null = null;
+  let result: CreateSesionResult | null = null;
 
   try {
-    await createSesion(parsed.data);
+    result = await createSesion(parsed.data);
   } catch (error) {
     saveError =
       error instanceof Error
@@ -374,11 +375,14 @@ export async function createSesionAction(formData: FormData) {
         : "No fue posible crear la sesion. Intenta nuevamente.";
   }
 
-  if (saveError) {
+  if (saveError || !result) {
+    const errorMessage = saveError ?? "No fue posible crear la sesión. Intenta nuevamente.";
     redirect(
-      `/nueva-sesion?cc=${encodeURIComponent(parsed.data.cc)}&error=${encodeURIComponent(saveError)}`,
+      `/nueva-sesion?cc=${encodeURIComponent(parsed.data.cc)}&error=${encodeURIComponent(errorMessage)}`,
     );
   }
 
-  redirect(`/dashboard?cc=${encodeURIComponent(parsed.data.cc)}`);
+  redirect(
+    `/sesion/${result.sesionId}?cc=${encodeURIComponent(parsed.data.cc)}&saved=1`,
+  );
 }

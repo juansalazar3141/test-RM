@@ -75,6 +75,10 @@ export default async function SesionDetailPage({
   const resolvedSearchParams = await searchParams;
   const rawCC = resolvedSearchParams.cc;
   const cc = typeof rawCC === "string" ? rawCC.trim() : "";
+  const saved =
+    resolvedSearchParams.saved === "1" ||
+    resolvedSearchParams.saved === "true" ||
+    resolvedSearchParams.saved === "saved";
 
   const sesionId = Number(id);
 
@@ -112,13 +116,19 @@ export default async function SesionDetailPage({
     <main className="space-y-8 pb-10">
       <header className="space-y-2">
         <h1 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
-          Detalle de sesion
+          Resultados de RM
         </h1>
         <p className="text-sm text-text-secondary">
           {formatSessionDate(sesion.createdAt)}
           {sesion.peso ? ` · Peso: ${formatNumber(sesion.peso)} kg` : null}
         </p>
       </header>
+
+      {saved ? (
+        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-950/30 dark:text-emerald-200">
+          Sesión guardada correctamente. Este es tu RM estimado para cada ejercicio.
+        </div>
+      ) : null}
 
       {sesion.resultados.length === 0 ? (
         <p className="text-base text-text-secondary">
@@ -127,8 +137,6 @@ export default async function SesionDetailPage({
       ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {sesion.resultados.map((resultado) => {
-            const estimatedRM = getEstimatedRM(resultado);
-
             return (
               <article
                 key={resultado.id}
@@ -148,42 +156,42 @@ export default async function SesionDetailPage({
                   <div className="space-y-0.5">
                     <MetricRow
                       label="Epley"
-                      value={formatNumber(resultado.epley)}
+                      value={`${formatNumber(resultado.epley)} kg`}
                       compact
                     />
                     <MetricRow
                       label="Brzycki"
-                      value={formatNumber(resultado.brzycki)}
+                      value={`${formatNumber(resultado.brzycki)} kg`}
                       compact
                     />
                     <MetricRow
                       label="Lombardi"
-                      value={formatNumber(resultado.lombardi)}
+                      value={`${formatNumber(resultado.lombardi)} kg`}
                       compact
                     />
                     <MetricRow
                       label="Lander"
-                      value={formatNumber(resultado.lander)}
+                      value={`${formatNumber(resultado.lander)} kg`}
                       compact
                     />
                     <MetricRow
                       label="O'Connor"
-                      value={formatNumber(resultado.oconnor)}
+                      value={`${formatNumber(resultado.oconnor)} kg`}
                       compact
                     />
                     <MetricRow
                       label="Mayhew"
-                      value={formatNumber(resultado.mayhew)}
+                      value={`${formatNumber(resultado.mayhew)} kg`}
                       compact
                     />
                     <MetricRow
                       label="Wathen"
-                      value={formatNumber(resultado.wathen)}
+                      value={`${formatNumber(resultado.wathen)} kg`}
                       compact
                     />
                     <MetricRow
                       label="Baechle"
-                      value={formatNumber(resultado.baechle)}
+                      value={`${formatNumber(resultado.baechle)} kg`}
                       compact
                     />
                   </div>

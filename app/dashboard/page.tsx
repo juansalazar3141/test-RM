@@ -9,6 +9,7 @@ import { ListItem } from "@/components/ui/ListItem";
 import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
+import { DashboardGuide } from "./DashboardGuide";
 import { calculateIMC, getIMCClassification } from "@/helpers/calculations";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
@@ -210,7 +211,7 @@ export default async function DashboardPage({
         )}
       </Section>
 
-      <Section title="Sesiones">
+      <Section title="Sesiones" className="dashboard-sessions-list">
         {sesiones.length === 0 ? (
           <p className="text-base text-text-secondary">
             Sin sesiones registradas.
@@ -231,9 +232,7 @@ export default async function DashboardPage({
       </Section>
 
       <div className="pt-2">
-        <PrimaryButton href={`/nueva-sesion?cc=${encodeURIComponent(cc)}`}>
-          + Nueva sesion
-        </PrimaryButton>
+        <DashboardGuide cc={cc} hasSessions={sesiones.length > 0} />
       </div>
 
       <PrimaryButton
