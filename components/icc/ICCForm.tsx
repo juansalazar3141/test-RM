@@ -5,8 +5,10 @@ import { FormEvent, useMemo, useState } from "react";
 import {
   calculateICC,
   getICCClassification,
+  getWaistCircumferenceClassification,
   HealthClassification,
 } from "@/helpers/calculations";
+import InfoTooltip from "@/components/ui/InfoTooltip";
 import {
   CIRCUMFERENCE_MAX_CM,
   CIRCUMFERENCE_MIN_CM,
@@ -80,9 +82,13 @@ export function ICCForm({
     const value = calculateICC(cinturaValue, caderaValue);
     return {
       value,
-      classification: getICCClassification(value),
+      classification: getICCClassification(value, sexo),
+      waistClassification: getWaistCircumferenceClassification(
+        cinturaValue,
+        sexo,
+      ),
     };
-  }, [cadera, cintura]);
+  }, [cadera, cintura, sexo]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -150,9 +156,17 @@ export function ICCForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
-        <label htmlFor="cintura" className="text-sm text-text-secondary">
+        <label
+          htmlFor="cintura"
+          className="flex items-center text-sm text-text-secondary"
+        >
           Cintura (cm)
+          <InfoTooltip text="Medida en centímetros alrededor del abdomen" />
         </label>
+        <p className="text-xs text-text-tertiary">
+          Mide alrededor de la parte más estrecha de tu abdomen, sin apretar la
+          cinta.
+        </p>
         <input
           id="cintura"
           name="cintura"
@@ -175,6 +189,9 @@ export function ICCForm({
         <label htmlFor="cadera" className="text-sm text-text-secondary">
           Cadera (cm)
         </label>
+        <p className="text-xs text-text-tertiary">
+          Mide alrededor de la parte más ancha de tus glúteos.
+        </p>
         <input
           id="cadera"
           name="cadera"
@@ -193,10 +210,14 @@ export function ICCForm({
         ) : null}
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-bg-soft px-4 py-3 dark:border-white/10">
-        <p className="text-xs uppercase tracking-wide text-text-tertiary">
-          ICC
-        </p>
+      <div className="space-y-3 rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 dark:border-white/10">
+        <div className="flex items-center gap-2">
+          <p className="text-xs uppercase tracking-wide text-text-tertiary">
+            ICC
+          </p>
+          <InfoTooltip text="Relación entre cintura y cadera" />
+        </div>
+        <p className="text-xs text-text-tertiary">ICC = cintura / cadera</p>
         <p className="mt-1 text-3xl font-semibold tracking-tight text-text-primary dark:text-white">
           {liveICC ? liveICC.value.toFixed(2) : "--"}
         </p>
@@ -206,9 +227,24 @@ export function ICCForm({
           </p>
         ) : (
           <p className="mt-1 text-sm text-text-secondary">
-            Ingresa ambos valores para calcular tu indice.
+            Ingresa ambos valores para calcular tu índice de cintura-cadera
+            (ICC).
           </p>
         )}
+        {liveICC ? (
+          <div className="rounded-2xl border border-gray-200 bg-bg-main px-3 py-2 dark:border-white/10 dark:bg-bg-soft">
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs uppercase tracking-wide text-text-tertiary">
+                Circunferencia de cintura
+              </p>
+              <InfoTooltip text="Medida en centímetros alrededor del abdomen" />
+            </div>
+            <p className="mt-1 text-sm text-text-secondary">
+              {parseNumericInput(cintura).toFixed(1)} cm ·{" "}
+              {liveICC.waistClassification.label}
+            </p>
+          </div>
+        ) : null}
       </div>
 
       {liveICC && (

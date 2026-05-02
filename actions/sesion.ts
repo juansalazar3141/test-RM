@@ -96,19 +96,19 @@ function parseCreateSesionInput(
   const peso = typeof rawPeso === "string" ? Number(rawPeso.trim()) : NaN;
 
   if (!cc) {
-    return { ok: false, error: "CC invalido.", cc: "" };
+    return { ok: false, error: "Cédula inválida.", cc: "" };
   }
 
   if (!requestId) {
     return {
       ok: false,
-      error: "No fue posible preparar el envio de la sesion.",
+      error: "No fue posible preparar el envío de la sesión.",
       cc,
     };
   }
 
   if (!Number.isFinite(peso) || peso <= 0) {
-    return { ok: false, error: "Peso invalido.", cc };
+    return { ok: false, error: "Peso inválido.", cc };
   }
 
   const rawEjercicioIds = formData.getAll("ejercicioIds");
@@ -138,7 +138,7 @@ function parseCreateSesionInput(
   if (resultados.length === 0) {
     return {
       ok: false,
-      error: "No se encontraron ejercicios validos para registrar.",
+      error: "No se encontraron ejercicios válidos para registrar.",
       cc,
     };
   }
@@ -376,13 +376,12 @@ export async function createSesionAction(formData: FormData) {
   }
 
   if (saveError || !result) {
-    const errorMessage = saveError ?? "No fue posible crear la sesión. Intenta nuevamente.";
+    const errorMessage =
+      saveError ?? "No fue posible crear la sesión. Intenta nuevamente.";
     redirect(
       `/nueva-sesion?cc=${encodeURIComponent(parsed.data.cc)}&error=${encodeURIComponent(errorMessage)}`,
     );
   }
 
-  redirect(
-    `/sesion/${result.sesionId}?cc=${encodeURIComponent(parsed.data.cc)}&saved=1`,
-  );
+  redirect(`/dashboard?cc=${encodeURIComponent(parsed.data.cc)}&saved=1`);
 }
