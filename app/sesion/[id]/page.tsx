@@ -90,6 +90,12 @@ function getFormulaRows(result: {
   ].sort((a, b) => a.value - b.value);
 }
 
+function getMethodLabel(method: string) {
+  if (method === "casas") return "Protocolo Casas";
+  if (method === "nacleiro") return "Test Nacleiro";
+  return "Estimación";
+}
+
 export default async function SesionDetailPage({
   params,
   searchParams,
@@ -138,9 +144,13 @@ export default async function SesionDetailPage({
     ? `/dashboard?cc=${encodeURIComponent(cc)}`
     : "/dashboard";
   const globalRM =
-    sesion.resultados.length > 0
-      ? Math.max(...sesion.resultados.map((resultado) => getEstimatedRM(resultado)))
-      : 0;
+    typeof sesion.finalRM === "number" && sesion.finalRM > 0
+      ? sesion.finalRM
+      : sesion.resultados.length > 0
+        ? Math.max(
+            ...sesion.resultados.map((resultado) => getEstimatedRM(resultado)),
+          )
+        : 0;
   const autoLevel = getUserLevel(globalRM, sesion.peso);
 
   return (
@@ -153,6 +163,23 @@ export default async function SesionDetailPage({
           {formatSessionDate(sesion.createdAt)}
           {sesion.peso ? ` · Peso: ${formatNumber(sesion.peso)} kg` : null}
         </p>
+        <div className="grid gap-3 rounded-2xl border border-gray-200 bg-bg-soft p-4 sm:grid-cols-3 dark:border-white/10">
+          <MetricRow
+            label="Método"
+            value={getMethodLabel(sesion.rmMethod)}
+            compact
+          />
+          <MetricRow
+            label="Experiencia"
+            value={`${sesion.trainingMonths} meses`}
+            compact
+          />
+          <MetricRow
+            label="RM final"
+            value={globalRM > 0 ? `${formatNumber(globalRM)} kg` : "Pendiente"}
+            compact
+          />
+        </div>
       </header>
 
       {saved ? (
@@ -201,6 +228,22 @@ export default async function SesionDetailPage({
                         compact
                       />
                     ))}
+                    {resultado.casas > 0 ? (
+                      <MetricRow
+                        label="Protocolo Casas"
+                        value={`${formatNumber(resultado.casas)} kg`}
+                        tone="positive"
+                        compact
+                      />
+                    ) : null}
+                    {resultado.nacleiro > 0 ? (
+                      <MetricRow
+                        label="Test Nacleiro"
+                        value={`${formatNumber(resultado.nacleiro)} kg`}
+                        tone="positive"
+                        compact
+                      />
+                    ) : null}
                   </div>
                 </Section>
 
