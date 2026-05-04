@@ -96,6 +96,34 @@ function getMethodLabel(method: string) {
   return "Estimación";
 }
 
+function getProtocolSummary(protocolData: unknown) {
+  if (!protocolData || typeof protocolData !== "object") {
+    return null;
+  }
+
+  const data = protocolData as {
+    exerciseName?: unknown;
+    referenceRM?: unknown;
+    estimatedRM?: unknown;
+    finalRM?: unknown;
+    initialWeight?: unknown;
+    kies?: unknown;
+  };
+
+  return {
+    exerciseName:
+      typeof data.exerciseName === "string" ? data.exerciseName : "",
+    referenceRM:
+      typeof data.referenceRM === "number" ? data.referenceRM : null,
+    estimatedRM:
+      typeof data.estimatedRM === "number" ? data.estimatedRM : null,
+    finalRM: typeof data.finalRM === "number" ? data.finalRM : null,
+    initialWeight:
+      typeof data.initialWeight === "number" ? data.initialWeight : null,
+    kies: typeof data.kies === "number" ? data.kies : null,
+  };
+}
+
 export default async function SesionDetailPage({
   params,
   searchParams,
@@ -152,6 +180,7 @@ export default async function SesionDetailPage({
           )
         : 0;
   const autoLevel = getUserLevel(globalRM, sesion.peso);
+  const protocolSummary = getProtocolSummary(sesion.protocolData);
 
   return (
     <main className="space-y-8 pb-10">
@@ -190,9 +219,64 @@ export default async function SesionDetailPage({
       ) : null}
 
       {sesion.resultados.length === 0 ? (
-        <p className="text-base text-text-secondary">
-          No hay resultados registrados para esta sesión.
-        </p>
+        protocolSummary ? (
+          <section className="space-y-3 rounded-2xl border border-gray-200 bg-bg-soft p-4 dark:border-white/10">
+            <h2 className="text-base font-semibold text-text-primary dark:text-white">
+              Resumen del protocolo
+            </h2>
+            <div className="space-y-0.5">
+              <MetricRow
+                label="Ejercicio base"
+                value={protocolSummary.exerciseName || "Sin nombre"}
+                compact
+              />
+              {protocolSummary.referenceRM !== null ? (
+                <MetricRow
+                  label="RM de referencia"
+                  value={`${formatNumber(protocolSummary.referenceRM)} kg`}
+                  compact
+                />
+              ) : null}
+              {protocolSummary.estimatedRM !== null ? (
+                <MetricRow
+                  label="RM estimado"
+                  value={`${formatNumber(protocolSummary.estimatedRM)} kg`}
+                  compact
+                />
+              ) : null}
+              {protocolSummary.initialWeight !== null ? (
+                <MetricRow
+                  label="Peso inicial"
+                  value={`${formatNumber(protocolSummary.initialWeight)} kg`}
+                  compact
+                />
+              ) : null}
+              {protocolSummary.kies !== null ? (
+                <MetricRow
+                  label="KIES"
+                  value={`${formatNumber(protocolSummary.kies)} kg`}
+                  compact
+                />
+              ) : null}
+              <MetricRow
+                label="RM final"
+                value={
+                  protocolSummary.finalRM
+                    ? `${formatNumber(protocolSummary.finalRM)} kg`
+                    : globalRM > 0
+                      ? `${formatNumber(globalRM)} kg`
+                      : "Pendiente"
+                }
+                tone="positive"
+                compact
+              />
+            </div>
+          </section>
+        ) : (
+          <p className="text-base text-text-secondary">
+            No hay resultados registrados para esta sesión.
+          </p>
+        )
       ) : (
         <div className="space-y-6">
           <UserLevelPersonalization autoLevel={autoLevel} />

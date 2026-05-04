@@ -75,10 +75,6 @@ export function NuevaSesionForm({
     return masa * getPorcentajeMasa(persona, ejercicio);
   }
 
-  function getSuggestedRM(ejercicio: Ejercicio) {
-    return getCargaBase(ejercicio) * 1.25;
-  }
-
   function handleFormKeyDown(e: React.KeyboardEvent<HTMLFormElement>) {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -315,38 +311,16 @@ export function NuevaSesionForm({
 
           {rmMethod === "casas" && canUseAdvancedMethods ? (
             <Section title="Protocolo Casas">
-              <CasasProtocol
-                ejercicios={ejercicios}
-                getSuggestedWeight={getCargaBase}
-                formatWeight={formatWeight}
-              />
-              {ejercicios.map((ejercicio) => (
-                <input
-                  key={ejercicio.id}
-                  type="hidden"
-                  name="ejercicioIds"
-                  value={ejercicio.id}
-                />
-              ))}
+              <CasasProtocol formatWeight={formatWeight} />
             </Section>
           ) : null}
 
           {rmMethod === "nacleiro" && canUseAdvancedMethods ? (
             <Section title="Test Nacleiro">
               <NacleiroTable
-                ejercicios={ejercicios}
                 bodyWeight={typeof pesoActual === "number" ? pesoActual : 0}
-                getSuggestedRM={getSuggestedRM}
                 formatWeight={formatWeight}
               />
-              {ejercicios.map((ejercicio) => (
-                <input
-                  key={ejercicio.id}
-                  type="hidden"
-                  name="ejercicioIds"
-                  value={ejercicio.id}
-                />
-              ))}
             </Section>
           ) : null}
 

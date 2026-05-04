@@ -2,225 +2,200 @@
 
 import { useMemo, useState } from "react";
 
-type Ejercicio = {
-  id: number;
-  nombre: string;
-  porcentajeMasaHombre: number;
-  porcentajeMasaMujer: number;
-};
-
-export type CasasPhase = {
+type CasasStep = {
   name: string;
-  percentage: [number, number];
-  reps: string;
+  percentage: number;
   rest: string;
+  type: "base" | "intermedio" | "fuerte";
 };
 
 type Props = {
-  ejercicios: Ejercicio[];
-  getSuggestedWeight: (ejercicio: Ejercicio) => number;
   formatWeight: (value: number) => string;
 };
 
-const CASAS_PHASES: CasasPhase[] = [
-  { name: "Activación", percentage: [40, 60], reps: "6-8 reps", rest: "1-2 min" },
-  { name: "Preparación", percentage: [70, 80], reps: "3-5 reps", rest: "2-3 min" },
-  { name: "Aproximación", percentage: [85, 90], reps: "2 reps", rest: "3 min" },
-  { name: "Intento submáximo", percentage: [95, 95], reps: "1 rep", rest: "3-5 min" },
-  { name: "1RM", percentage: [100, 100], reps: "1RM attempts", rest: "3-5 min" },
+const CASAS_STEPS: CasasStep[] = [
+  { name: "Fase especifica 40%", percentage: 0.4, rest: "Descanso 1 minuto", type: "base" },
+  { name: "Fase especifica 60%", percentage: 0.6, rest: "Descanso 1 minuto", type: "base" },
+  { name: "Preparacion articular 70%", percentage: 0.7, rest: "3 minutos de pausa", type: "base" },
+  { name: "Preparacion articular 80%", percentage: 0.8, rest: "3 minutos de pausa", type: "base" },
+  { name: "Preparacion neuromuscular 85%", percentage: 0.85, rest: "de 3 a 5 minutos", type: "base" },
+  { name: "Preparacion neuromuscular 90%", percentage: 0.9, rest: "de 3 a 5 minutos", type: "base" },
+  { name: "Maxima activacion 95%", percentage: 0.95, rest: "de 1 a 2 minutos", type: "base" },
+  { name: "Busqueda RM 100%", percentage: 1, rest: "de 3 a 5 min", type: "base" },
+  { name: "Repeticion 1 intermedia", percentage: 1.025, rest: "de 3 a 5 min", type: "intermedio" },
+  { name: "Repeticion 2 intermedia", percentage: 1.050625, rest: "de 3 a 5 min", type: "intermedio" },
+  { name: "Repeticion 3 intermedia", percentage: 1.076890625, rest: "de 3 a 5 min", type: "intermedio" },
+  { name: "Repeticion 1 fuerte", percentage: 1.05, rest: "de 3 a 5 min", type: "fuerte" },
+  { name: "Repeticion 2 fuerte", percentage: 1.1025, rest: "de 3 a 5 min", type: "fuerte" },
+  { name: "Repeticion 3 fuerte", percentage: 1.157625, rest: "de 3 a 5 min", type: "fuerte" },
 ];
 
-type CasasState = Record<number, { activePhase: number; weights: string[] }>;
-
-function createInitialState(ejercicios: Ejercicio[]): CasasState {
-  return Object.fromEntries(
-    ejercicios.map((ejercicio) => [
-      ejercicio.id,
-      { activePhase: 0, weights: CASAS_PHASES.map(() => "") },
-    ]),
-  );
-}
-
 function toNumber(value: string) {
-  const parsed = Number(value);
+  const parsed = Number(value.replace(",", "."));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
-export function CasasProtocol({
-  ejercicios,
-  getSuggestedWeight,
-  formatWeight,
-}: Props) {
-  const [state, setState] = useState<CasasState>(() =>
-    createInitialState(ejercicios),
+export function CasasProtocol({ formatWeight }: Props) {
+  const [exerciseName, setExerciseName] = useState("");
+  const [referenceRM, setReferenceRM] = useState("");
+  const [activeStep, setActiveStep] = useState(0);
+  const [actualWeights, setActualWeights] = useState<string[]>(
+    CASAS_STEPS.map(() => ""),
   );
 
-  const protocolData = useMemo(
-    () => ({
-      method: "casas",
-      phases: CASAS_PHASES,
-      ejercicios: ejercicios.map((ejercicio) => {
-        const item = state[ejercicio.id];
-        const weights = item?.weights ?? [];
-        const finalRM = Math.max(...weights.map(toNumber), 0);
-
-        return {
-          ejercicioId: ejercicio.id,
-          nombre: ejercicio.nombre,
-          activePhase: item?.activePhase ?? 0,
-          finalRM,
-          phases: CASAS_PHASES.map((phase, index) => ({
-            ...phase,
-            weight: toNumber(weights[index] ?? ""),
-          })),
-        };
-      }),
-    }),
-    [ejercicios, state],
+  const reference = toNumber(referenceRM);
+  const calculatedSteps = useMemo(
+    () =>
+      CASAS_STEPS.map((step, index) => ({
+        ...step,
+        step: index + 1,
+        targetWeight: Math.round(reference * step.percentage),
+        actualWeight: toNumber(actualWeights[index] ?? ""),
+      })),
+    [actualWeights, reference],
   );
-
-  function updateWeight(ejercicioId: number, phaseIndex: number, value: string) {
-    setState((current) => ({
-      ...current,
-      [ejercicioId]: {
-        activePhase: current[ejercicioId]?.activePhase ?? 0,
-        weights: (current[ejercicioId]?.weights ?? CASAS_PHASES.map(() => "")).map(
-          (weight, index) => (index === phaseIndex ? value : weight),
-        ),
-      },
-    }));
-  }
-
-  function advance(ejercicioId: number) {
-    setState((current) => {
-      const item = current[ejercicioId];
-      if (!item) return current;
-
-      return {
-        ...current,
-        [ejercicioId]: {
-          ...item,
-          activePhase: Math.min(item.activePhase + 1, CASAS_PHASES.length - 1),
-        },
-      };
-    });
-  }
-
-  function goBack(ejercicioId: number) {
-    setState((current) => {
-      const item = current[ejercicioId];
-      if (!item) return current;
-
-      return {
-        ...current,
-        [ejercicioId]: {
-          ...item,
-          activePhase: Math.max(item.activePhase - 1, 0),
-        },
-      };
-    });
-  }
+  const finalRM = Math.max(
+    ...calculatedSteps.map((step) => step.actualWeight || step.targetWeight),
+    0,
+  );
+  const current = calculatedSteps[activeStep];
+  const protocolData = {
+    method: "casas",
+    exerciseName,
+    referenceRM: reference,
+    finalRM,
+    steps: calculatedSteps,
+  };
 
   return (
     <div className="space-y-4">
       <input type="hidden" name="protocolData" value={JSON.stringify(protocolData)} />
-      {ejercicios.map((ejercicio) => {
-        const item = state[ejercicio.id];
-        const activePhase = item?.activePhase ?? 0;
-        const phase = CASAS_PHASES[activePhase];
-        const weight = item?.weights[activePhase] ?? "";
-        const finalRM = Math.max(...(item?.weights ?? []).map(toNumber), 0);
-        const suggested = getSuggestedWeight(ejercicio);
-        const minWeight = suggested * (phase.percentage[0] / 100);
-        const maxWeight = suggested * (phase.percentage[1] / 100);
+      <input type="hidden" name="estimatedRM" value={reference} />
+      <input type="hidden" name="finalRM" value={finalRM} />
+      <input type="hidden" name="protocolExerciseName" value={exerciseName} />
 
-        return (
-          <article
-            key={ejercicio.id}
-            className="rounded-2xl border border-gray-200 bg-bg-main p-4 dark:border-white/10 dark:bg-bg-subtle"
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label>
+          <span className="text-sm font-medium text-text-primary dark:text-white">
+            Ejercicio usado como base
+          </span>
+          <input
+            name="protocolExerciseNameInput"
+            type="text"
+            value={exerciseName}
+            onChange={(event) => setExerciseName(event.target.value)}
+            className="mt-2 w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
+            placeholder="Ej. Press banca"
+            required
+          />
+        </label>
+        <label>
+          <span className="text-sm font-medium text-text-primary dark:text-white">
+            RM de referencia
+          </span>
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            value={referenceRM}
+            onChange={(event) => setReferenceRM(event.target.value)}
+            className="mt-2 w-full rounded-2xl border border-gray-200 bg-bg-main px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-subtle dark:text-white"
+            placeholder="Ej. 100"
+            required
+          />
+        </label>
+      </div>
+
+      <article className="rounded-2xl border border-gray-200 bg-bg-main p-4 dark:border-white/10 dark:bg-bg-subtle">
+        <header className="space-y-1">
+          <p className="text-base font-semibold text-text-primary dark:text-white">
+            Paso {current.step} de {calculatedSteps.length}: {current.name}
+          </p>
+          <p className="text-sm text-text-secondary">
+            Peso sugerido: {formatWeight(current.targetWeight)} kg · {current.rest}
+          </p>
+        </header>
+
+        <label className="mt-4 block">
+          <span className="text-sm font-medium text-text-primary dark:text-white">
+            Peso usado
+          </span>
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            value={actualWeights[activeStep] ?? ""}
+            onChange={(event) =>
+              setActualWeights((currentWeights) =>
+                currentWeights.map((weight, index) =>
+                  index === activeStep ? event.target.value : weight,
+                ),
+              )
+            }
+            className="mt-2 w-full rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-main dark:text-white"
+            placeholder={`${formatWeight(current.targetWeight)} kg`}
+          />
+        </label>
+
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            onClick={() => setActiveStep((step) => Math.max(step - 1, 0))}
+            disabled={activeStep === 0}
+            className="rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold text-text-primary transition hover:bg-bg-soft disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-white"
           >
-            <input type="hidden" name={`carga_${ejercicio.id}`} value={finalRM || suggested} />
-            <input type="hidden" name={`repeticiones_${ejercicio.id}`} value="1" />
-            <input type="hidden" name={`casas_${ejercicio.id}`} value={finalRM} />
-            <header className="space-y-1">
-              <p className="text-base font-semibold text-text-primary dark:text-white">
-                {ejercicio.nombre}
-              </p>
-              <p className="text-sm text-text-secondary">
-                Paso {activePhase + 1} de {CASAS_PHASES.length}: {phase.name}
-              </p>
-            </header>
+            Anterior
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setActiveStep((step) => Math.min(step + 1, CASAS_STEPS.length - 1))
+            }
+            disabled={activeStep === CASAS_STEPS.length - 1}
+            className="rounded-2xl border border-transparent bg-text-primary px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black"
+          >
+            Siguiente paso
+          </button>
+          <p className="text-sm text-text-secondary sm:ml-auto">
+            RM final: {finalRM > 0 ? `${formatWeight(finalRM)} kg` : "pendiente"}
+          </p>
+        </div>
+      </article>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">
-                  Intensidad
-                </p>
-                <p className="mt-1 text-sm text-text-primary dark:text-white">
-                  {phase.percentage[0] === phase.percentage[1]
-                    ? `${phase.percentage[0]}%`
-                    : `${phase.percentage[0]}-${phase.percentage[1]}%`}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">
-                  Repeticiones
-                </p>
-                <p className="mt-1 text-sm text-text-primary dark:text-white">
-                  {phase.reps}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">
-                  Descanso
-                </p>
-                <p className="mt-1 text-sm text-text-primary dark:text-white">
-                  {phase.rest}
-                </p>
-              </div>
-            </div>
-
-            <label className="mt-4 block">
-              <span className="text-sm font-medium text-text-primary dark:text-white">
-                Peso usado en este paso
-              </span>
-              <input
-                type="number"
-                min="0"
-                step="0.5"
-                value={weight}
-                onChange={(event) =>
-                  updateWeight(ejercicio.id, activePhase, event.target.value)
-                }
-                className="mt-2 w-full rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 text-text-primary outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/10 dark:bg-bg-main dark:text-white"
-                placeholder={`${formatWeight(minWeight)}-${formatWeight(maxWeight)} kg`}
-              />
-            </label>
-
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => goBack(ejercicio.id)}
-                disabled={activePhase === 0}
-                className="rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold text-text-primary transition hover:bg-bg-soft disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-white"
-              >
-                Anterior
-              </button>
-              <button
-                type="button"
-                onClick={() => advance(ejercicio.id)}
-                disabled={activePhase === CASAS_PHASES.length - 1 || !weight}
-                className="rounded-2xl border border-transparent bg-text-primary px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black"
-              >
-                Siguiente paso
-              </button>
-              <p className="text-sm text-text-secondary sm:ml-auto sm:self-center">
-                RM final: {finalRM > 0 ? `${formatWeight(finalRM)} kg` : "pendiente"}
-              </p>
-            </div>
-          </article>
-        );
-      })}
+      <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-bg-main dark:border-white/10 dark:bg-bg-subtle">
+        <table className="w-full min-w-[640px] text-left text-sm">
+          <thead className="text-xs uppercase tracking-[0.16em] text-text-tertiary">
+            <tr>
+              <th className="px-4 py-3 font-medium">Paso</th>
+              <th className="px-4 py-3 font-medium">Tipo</th>
+              <th className="px-4 py-3 font-medium">%</th>
+              <th className="px-4 py-3 font-medium">Sugerido</th>
+              <th className="px-4 py-3 font-medium">Usado</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 dark:divide-white/10">
+            {calculatedSteps.map((step) => (
+              <tr key={step.step}>
+                <td className="px-4 py-3 text-text-primary dark:text-white">
+                  {step.name}
+                </td>
+                <td className="px-4 py-3 text-text-secondary">{step.type}</td>
+                <td className="px-4 py-3 text-text-secondary">
+                  {Math.round(step.percentage * 1000) / 10}%
+                </td>
+                <td className="px-4 py-3 text-text-primary dark:text-white">
+                  {formatWeight(step.targetWeight)} kg
+                </td>
+                <td className="px-4 py-3 text-text-secondary">
+                  {step.actualWeight > 0
+                    ? `${formatWeight(step.actualWeight)} kg`
+                    : "-"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

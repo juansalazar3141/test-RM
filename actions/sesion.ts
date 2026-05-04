@@ -22,6 +22,8 @@ type CreateSesionInput = {
   peso: number;
   trainingMonths: number;
   rmMethod: RMMethod;
+  estimatedRM: number;
+  finalRM: number;
   protocolData: Prisma.InputJsonValue | null;
   ejercicios: ResultadoInput[];
 };
@@ -159,6 +161,8 @@ function parseCreateSesionInput(
   const peso = typeof rawPeso === "string" ? Number(rawPeso.trim()) : NaN;
   const trainingMonths = parseNonNegativeInt(formData.get("trainingMonths"));
   const rmMethod = parseRMMethod(formData.get("rmMethod"), trainingMonths);
+  const estimatedRM = parseNonNegativeNumber(formData.get("estimatedRM"));
+  const finalRM = parseNonNegativeNumber(formData.get("finalRM"));
   const protocolData = parseProtocolData(formData.get("protocolData"));
 
   if (!cc) {
@@ -200,10 +204,18 @@ function parseCreateSesionInput(
     });
   }
 
-  if (resultados.length === 0) {
+  if (rmMethod === "estimation" && resultados.length === 0) {
     return {
       ok: false,
       error: "No se encontraron ejercicios válidos para registrar.",
+      cc,
+    };
+  }
+
+  if (rmMethod !== "estimation" && finalRM <= 0) {
+    return {
+      ok: false,
+      error: "Debes completar el protocolo para registrar el RM final.",
       cc,
     };
   }
@@ -216,6 +228,8 @@ function parseCreateSesionInput(
       peso,
       trainingMonths,
       rmMethod,
+      estimatedRM,
+      finalRM,
       protocolData,
       ejercicios: resultados,
     },
@@ -297,7 +311,7 @@ export async function createSesion(
     throw new Error("No fue posible preparar el envio de la sesion.");
   }
 
-  if (sanitizedEjercicios.length === 0) {
+  if (rmMethod === "estimation" && sanitizedEjercicios.length === 0) {
     throw new Error("No se encontraron ejercicios validos para registrar.");
   }
 
@@ -362,7 +376,7 @@ export async function createSesion(
           };
         });
 
-      if (resultadosData.length === 0) {
+      if (rmMethod === "estimation" && resultadosData.length === 0) {
         throw new Error(
           "No se pudieron preparar resultados validos para la sesion.",
         );
@@ -373,14 +387,22 @@ export async function createSesion(
         data: { masaCorporal: input.peso },
       });
 
-      const estimatedRM = Math.max(
-        ...sanitizedEjercicios.map((item) => getFormulaRM(item, persona.sexo).estimated),
-      );
-      const finalRM = Math.max(
-        ...sanitizedEjercicios.map((item) =>
-          getFinalRM(item, rmMethod, persona.sexo),
-        ),
-      );
+      const estimatedRM =
+        sanitizedEjercicios.length > 0
+          ? Math.max(
+              ...sanitizedEjercicios.map(
+                (item) => getFormulaRM(item, persona.sexo).estimated,
+              ),
+            )
+          : input.estimatedRM;
+      const finalRM =
+        sanitizedEjercicios.length > 0
+          ? Math.max(
+              ...sanitizedEjercicios.map((item) =>
+                getFinalRM(item, rmMethod, persona.sexo),
+              ),
+            )
+          : input.finalRM;
 
       return tx.sesion.create({
         data: {
