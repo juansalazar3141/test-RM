@@ -8,6 +8,7 @@ import { UserLevelPersonalization } from "@/components/results/UserLevelPersonal
 import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
+import { calculateRepetitionValue, calculateStrengthIndex } from "@/lib/rm";
 import { getUserLevel } from "@/lib/user-level";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
@@ -149,6 +150,11 @@ export default async function SesionDetailPage({
   const sesion = await prisma.sesion.findUnique({
     where: { id: sesionId },
     include: {
+      persona: {
+        select: {
+          sexo: true,
+        },
+      },
       resultados: {
         include: {
           ejercicio: {
@@ -181,6 +187,13 @@ export default async function SesionDetailPage({
         : 0;
   const autoLevel = getUserLevel(globalRM, sesion.peso);
   const protocolSummary = getProtocolSummary(sesion.protocolData);
+  const strengthIndex = calculateStrengthIndex(
+    sesion.resultados.map((resultado) => ({
+      ejercicioId: resultado.ejercicioId,
+      repeticiones: resultado.repeticiones,
+    })),
+    sesion.persona.sexo,
+  );
 
   return (
     <main className="space-y-8 pb-10">
@@ -208,6 +221,14 @@ export default async function SesionDetailPage({
             value={globalRM > 0 ? `${formatNumber(globalRM)} kg` : "Pendiente"}
             compact
           />
+          {sesion.resultados.length > 0 ? (
+            <MetricRow
+              label="Indice de fuerza"
+              value={`${strengthIndex.total} · ${strengthIndex.label}`}
+              tone="positive"
+              compact
+            />
+          ) : null}
         </div>
       </header>
 
@@ -285,6 +306,11 @@ export default async function SesionDetailPage({
             {sesion.resultados.map((resultado) => {
               const estimatedRM = getEstimatedRM(resultado);
               const formulaRows = getFormulaRows(resultado);
+              const repetitionValue = calculateRepetitionValue(
+                resultado.repeticiones,
+                resultado.ejercicioId,
+                sesion.persona.sexo,
+              );
 
               return (
                 <article
@@ -301,6 +327,14 @@ export default async function SesionDetailPage({
                     <InfoTooltip text="Peso recomendado según tu cuerpo: calculado a partir de tu masa corporal y el porcentaje sugerido para este ejercicio." />
                   </p>
                 </header>
+
+                <Section title="Valor para indice de fuerza" className="space-y-2">
+                  <MetricRow
+                    label="Valor"
+                    value={String(repetitionValue)}
+                    compact
+                  />
+                </Section>
 
                 <Section title="Estimaciones de peso máximo (1RM)" className="space-y-2">
                   <div className="space-y-0.5">

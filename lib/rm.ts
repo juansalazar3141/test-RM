@@ -13,6 +13,18 @@ export type RMResult = {
 
 export type SexoRM = "masculino" | "femenino";
 
+export type StrengthIndexLabel =
+  | "Bajo"
+  | "Regular"
+  | "Buena"
+  | "Muy buena"
+  | "Excelente";
+
+export type StrengthIndexResult = {
+  total: number;
+  label: StrengthIndexLabel;
+};
+
 type SessionExercise = {
   id: number;
   porcentajeMasaHombre: number;
@@ -28,7 +40,10 @@ type SessionRMResult = {
   ejercicioId: number;
   repeticiones: number;
   carga: number;
+  valor: number;
 } & RMResult;
+
+type RepetitionValueTable = Record<number, readonly number[]>;
 
 const ZERO_RM_RESULT: RMResult = {
   epley: 0,
@@ -39,6 +54,26 @@ const ZERO_RM_RESULT: RMResult = {
   mayhew: 0,
   wathen: 0,
   baechle: 0,
+};
+
+const REPETITION_VALUES = [5, 7, 9, 11, 13, 15, 17] as const;
+
+const MEN_REPETITION_LIMITS: RepetitionValueTable = {
+  1: [2, 4, 7, 9, 14, 20, Infinity],
+  2: [3, 6, 9, 12, 14, 19, Infinity],
+  3: [3, 5, 8, 10, 15, 24, Infinity],
+  4: [22, 27, 32, 36, 40, 44, Infinity],
+  5: [0, 2, 6, 10, 15, 20, Infinity],
+  6: [1, 3, 7, 10, 14, 19, Infinity],
+};
+
+const WOMEN_REPETITION_LIMITS: RepetitionValueTable = {
+  1: [2, 5, 7, 11, 15, 20, Infinity],
+  2: [1, 4, 7, 9, 12, 19, Infinity],
+  3: [2, 5, 8, 10, 15, 24, Infinity],
+  4: [14, 19, 24, 29, 33, 38, Infinity],
+  5: [0, 1, 4, 9, 15, 20, Infinity],
+  6: [0, 2, 4, 6, 9, 16, Infinity],
 };
 
 export function roundToTwo(value: number): number {
@@ -87,6 +122,70 @@ function normalizeSexo(sexo?: string): SexoRM {
 
   const normalized = sexo.trim().toLowerCase();
   return normalized === "femenino" ? "femenino" : "masculino";
+}
+
+function getRepetitionLimits(sexo: SexoRM | string, ejercicioId: number) {
+  const normalizedSexo = normalizeSexo(sexo);
+  const table =
+    normalizedSexo === "femenino"
+      ? WOMEN_REPETITION_LIMITS
+      : MEN_REPETITION_LIMITS;
+
+  return table[ejercicioId] ?? null;
+}
+
+export function calculateRepetitionValue(
+  repeticiones: number,
+  ejercicioId: number,
+  sexo: SexoRM | string = "masculino",
+): number {
+  if (!Number.isFinite(repeticiones)) {
+    return 0;
+  }
+
+  const limits = getRepetitionLimits(sexo, ejercicioId);
+  if (!limits) {
+    return 0;
+  }
+
+  const reps = Math.abs(Math.floor(repeticiones));
+  const valueIndex = limits.findIndex((limit) => reps <= limit);
+
+  return valueIndex >= 0 ? REPETITION_VALUES[valueIndex] : 0;
+}
+
+export function getStrengthIndexClassification(
+  total: number,
+): StrengthIndexLabel {
+  if (!Number.isFinite(total) || total <= 53) {
+    return "Bajo";
+  }
+
+  if (total <= 65) return "Regular";
+  if (total <= 77) return "Buena";
+  if (total <= 89) return "Muy buena";
+  return "Excelente";
+}
+
+export function calculateStrengthIndex(
+  resultados: Array<{ ejercicioId: number; repeticiones: number }>,
+  sexo: SexoRM | string = "masculino",
+): StrengthIndexResult {
+  const total = resultados.reduce(
+    (sum, resultado) =>
+      sum +
+      calculateRepetitionValue(
+        resultado.repeticiones,
+        resultado.ejercicioId,
+        sexo,
+      ),
+    0,
+  );
+
+  return {
+    total,
+    label: getStrengthIndexClassification(total),
+  };
 }
 
 function calculateRMFemenino(carga: number, reps: number): RMResult {
@@ -266,6 +365,7 @@ export function calculateRMForSession(
       ejercicioId: ejercicio.id,
       repeticiones,
       carga,
+      valor: calculateRepetitionValue(repeticiones, ejercicio.id, sexo),
       ...rm,
     };
   });
