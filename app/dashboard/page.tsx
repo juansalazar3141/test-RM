@@ -115,6 +115,10 @@ export default async function DashboardPage({
     resolvedSearchParams.saved === "1" ||
     resolvedSearchParams.saved === "true" ||
     resolvedSearchParams.saved === "saved";
+  const deleted =
+    resolvedSearchParams.deleted === "1" ||
+    resolvedSearchParams.deleted === "true" ||
+    resolvedSearchParams.deleted === "deleted";
 
   if (!cc) {
     redirect("/");
@@ -227,7 +231,9 @@ export default async function DashboardPage({
       <DashboardSessionsSection
         sessions={sessionItems}
         newSessionHref={newSessionHref}
+        cc={cc}
         saved={saved}
+        deleted={deleted}
       />
 
       <Section title="Progreso inteligente">

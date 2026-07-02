@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { Prisma, PrismaClient } from "@prisma/client";
 
@@ -32,6 +33,8 @@ type CreateSesionResult = {
   success: true;
   sesionId: number;
 };
+
+const EXERCISES_WITHOUT_LOAD = new Set([4]);
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -356,7 +359,11 @@ export async function createSesion(
         .filter((item) => ejerciciosPermitidos.has(item.ejercicioId))
         .map((item) => {
           const fallback = fallbackByExercise.get(item.ejercicioId);
-          const carga = item.carga > 0 ? item.carga : fallback?.carga ?? 0;
+          const carga = EXERCISES_WITHOUT_LOAD.has(item.ejercicioId)
+            ? 0
+            : item.carga > 0
+              ? item.carga
+              : fallback?.carga ?? 0;
           const formula = calculateRM(carga, item.repeticiones, persona.sexo);
 
           return {
@@ -508,4 +515,31 @@ export async function createSesionAction(formData: FormData) {
   }
 
   redirect(`/dashboard?cc=${encodeURIComponent(parsed.data.cc)}&saved=1`);
+}
+
+export async function deleteSesionAction(formData: FormData) {
+  const rawSesionId = formData.get("sesionId");
+  const rawCC = formData.get("cc");
+  const sesionId = typeof rawSesionId === "string" ? Number(rawSesionId) : NaN;
+  const cc = typeof rawCC === "string" ? normalizeCC(rawCC) : "";
+
+  if (!cc) {
+    redirect("/");
+  }
+
+  if (!Number.isInteger(sesionId) || sesionId <= 0) {
+    redirect(`/dashboard?cc=${encodeURIComponent(cc)}&deleteError=1`);
+  }
+
+  await prisma.sesion.deleteMany({
+    where: {
+      id: sesionId,
+      persona: {
+        cc,
+      },
+    },
+  });
+
+  revalidatePath("/dashboard");
+  redirect(`/dashboard?cc=${encodeURIComponent(cc)}&deleted=1`);
 }

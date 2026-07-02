@@ -11,6 +11,8 @@ import { Section } from "@/components/ui/Section";
 import { calculateRepetitionValue, calculateStrengthIndex } from "@/lib/rm";
 import { getUserLevel } from "@/lib/user-level";
 
+const EXERCISES_WITHOUT_LOAD = new Set([4]);
+
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createPrismaClient() {
@@ -306,6 +308,9 @@ export default async function SesionDetailPage({
             {sesion.resultados.map((resultado) => {
               const estimatedRM = getEstimatedRM(resultado);
               const formulaRows = getFormulaRows(resultado);
+              const withoutLoad = EXERCISES_WITHOUT_LOAD.has(
+                resultado.ejercicioId,
+              );
               const repetitionValue = calculateRepetitionValue(
                 resultado.repeticiones,
                 resultado.ejercicioId,
@@ -322,9 +327,15 @@ export default async function SesionDetailPage({
                     {resultado.ejercicio.nombre}
                   </h2>
                   <p className="text-sm text-text-secondary">
-                    {resultado.repeticiones} repeticiones ·{" "}
-                    {formatNumber(resultado.carga)} kg
-                    <InfoTooltip text="Peso recomendado según tu cuerpo: calculado a partir de tu masa corporal y el porcentaje sugerido para este ejercicio." />
+                    {withoutLoad ? (
+                      `${resultado.repeticiones} repeticiones en 1 minuto`
+                    ) : (
+                      <>
+                        {resultado.repeticiones} repeticiones ·{" "}
+                        {formatNumber(resultado.carga)} kg
+                        <InfoTooltip text="Peso recomendado según tu cuerpo: calculado a partir de tu masa corporal y el porcentaje sugerido para este ejercicio." />
+                      </>
+                    )}
                   </p>
                 </header>
 
@@ -336,36 +347,40 @@ export default async function SesionDetailPage({
                   />
                 </Section>
 
-                <Section title="Estimaciones de peso máximo (1RM)" className="space-y-2">
-                  <div className="space-y-0.5">
-                    {formulaRows.map((formula) => (
-                      <MetricRow
-                        key={formula.label}
-                        label={formula.label}
-                        value={`${formatNumber(formula.value)} kg`}
-                        compact
-                      />
-                    ))}
-                    {resultado.casas > 0 ? (
-                      <MetricRow
-                        label="Protocolo Casas"
-                        value={`${formatNumber(resultado.casas)} kg`}
-                        tone="positive"
-                        compact
-                      />
-                    ) : null}
-                    {resultado.nacleiro > 0 ? (
-                      <MetricRow
-                        label="Test Nacleiro"
-                        value={`${formatNumber(resultado.nacleiro)} kg`}
-                        tone="positive"
-                        compact
-                      />
-                    ) : null}
-                  </div>
-                </Section>
+                {!withoutLoad ? (
+                  <>
+                    <Section title="Estimaciones de peso máximo (1RM)" className="space-y-2">
+                      <div className="space-y-0.5">
+                        {formulaRows.map((formula) => (
+                          <MetricRow
+                            key={formula.label}
+                            label={formula.label}
+                            value={`${formatNumber(formula.value)} kg`}
+                            compact
+                          />
+                        ))}
+                        {resultado.casas > 0 ? (
+                          <MetricRow
+                            label="Protocolo Casas"
+                            value={`${formatNumber(resultado.casas)} kg`}
+                            tone="positive"
+                            compact
+                          />
+                        ) : null}
+                        {resultado.nacleiro > 0 ? (
+                          <MetricRow
+                            label="Test Nacleiro"
+                            value={`${formatNumber(resultado.nacleiro)} kg`}
+                            tone="positive"
+                            compact
+                          />
+                        ) : null}
+                      </div>
+                    </Section>
 
-                  <TrainingRecommendations rm={estimatedRM} level={autoLevel} />
+                    <TrainingRecommendations rm={estimatedRM} level={autoLevel} />
+                  </>
+                ) : null}
                 </article>
               );
             })}
