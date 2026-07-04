@@ -213,18 +213,18 @@ Que hacer:
 
 ## 9. Tabla rapida de diagnostico
 
-| Si pasa esto... | Lo mas probable es... | Que hacer... |
-|---|---|---|
-| La app no abre | Internet, URL incorrecta, Vercel caido | Verifica Internet, URL, luego Vercel |
-| La app abre pero no carga datos | Aiven o conexion a base de datos | Revisa estado de Aiven |
-| No guarda datos | Conexion inestable, campos incompletos, falla de BD | Revisa Internet, valida campos, prueba una vez mas, revisa Aiven |
-| Error 500 | Falla interna de aplicacion o servicio externo | Recarga, revisa Vercel, luego Aiven |
-| Error 404 | URL incorrecta o ruta no disponible | Verifica direccion y vuelve al inicio |
-| Sesion cerrada de golpe | Token vencido o sesion expirada | Inicia sesion nuevamente |
-| No llegan correos | Servicio de correo o configuracion de clave de envio | Verifica estado general y consulta IA para guia segura |
-| Vercel bien, app sin datos | Base de datos no disponible | Revisa Aiven |
-| Aiven bien, app no abre | Vercel con despliegue fallido | Revisa Deployments y Redeploy |
-| Login admin no funciona | Credenciales incorrectas o usuario bloqueado | Verifica datos de acceso y consulta IA para recuperacion |
+| Si pasa esto...                 | Lo mas probable es...                                | Que hacer...                                                     |
+| ------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------- |
+| La app no abre                  | Internet, URL incorrecta, Vercel caido               | Verifica Internet, URL, luego Vercel                             |
+| La app abre pero no carga datos | Aiven o conexion a base de datos                     | Revisa estado de Aiven                                           |
+| No guarda datos                 | Conexion inestable, campos incompletos, falla de BD  | Revisa Internet, valida campos, prueba una vez mas, revisa Aiven |
+| Error 500                       | Falla interna de aplicacion o servicio externo       | Recarga, revisa Vercel, luego Aiven                              |
+| Error 404                       | URL incorrecta o ruta no disponible                  | Verifica direccion y vuelve al inicio                            |
+| Sesion cerrada de golpe         | Token vencido o sesion expirada                      | Inicia sesion nuevamente                                         |
+| No llegan correos               | Servicio de correo o configuracion de clave de envio | Verifica estado general y consulta IA para guia segura           |
+| Vercel bien, app sin datos      | Base de datos no disponible                          | Revisa Aiven                                                     |
+| Aiven bien, app no abre         | Vercel con despliegue fallido                        | Revisa Deployments y Redeploy                                    |
+| Login admin no funciona         | Credenciales incorrectas o usuario bloqueado         | Verifica datos de acceso y consulta IA para recuperacion         |
 
 ## 10. Problemas comunes y solucion detallada
 
@@ -778,6 +778,7 @@ Necesito ayuda con una aplicacion web y no se programar.
 Quiero instrucciones extremadamente detalladas, paso por paso, sin tecnicismos.
 
 Contexto:
+
 - Aplicacion: APP TEST DE RM.
 - Despliegue: Vercel.
 - Base de datos: MariaDB en Aiven.
@@ -792,6 +793,7 @@ Mensaje que aparece en pantalla:
 [Copia el mensaje exacto]
 
 Quiero que me indiques:
+
 1. Que significa este problema en palabras simples.
 2. Que revisar primero, segundo y tercero.
 3. Que NO debo tocar para no empeorar.
@@ -803,6 +805,7 @@ Actua como soporte tecnico para una persona no tecnica.
 No se programar y necesito una guia muy detallada.
 
 Sistema:
+
 - App en Vercel.
 - Base de datos en Aiven (MariaDB).
 
@@ -816,6 +819,7 @@ Error visible:
 [Mensaje exacto]
 
 Dame:
+
 1. Diagnostico probable en lenguaje simple.
 2. Pasos exactos para resolver sin usar comandos.
 3. Alertas de seguridad antes de tocar variables o base de datos.
@@ -827,6 +831,7 @@ Necesito soporte operativo, no desarrollo de codigo.
 No se programar. Explica todo como a principiante total.
 
 Proyecto:
+
 - APP TEST DE RM.
 - Vercel + Aiven MariaDB.
 
@@ -840,6 +845,7 @@ Mensaje en pantalla:
 [Error exacto]
 
 Por favor:
+
 1. Dame una ruta de solucion paso a paso.
 2. Dime que no debo modificar.
 3. Dime cuando debo detenerme y pedir escalamiento.
@@ -850,6 +856,7 @@ Necesito ayuda para operar una app web sin saber programar.
 Quiero instrucciones detalladas, ordenadas y sin tecnicismos.
 
 Contexto:
+
 - APP TEST DE RM.
 - Hosting: Vercel.
 - Base de datos: Aiven MariaDB.
@@ -864,6 +871,7 @@ Texto del error:
 [Pega aqui el error]
 
 Indicame:
+
 1. Causa probable.
 2. Pasos concretos para resolver.
 3. Riesgos antes de tocar configuraciones delicadas.
