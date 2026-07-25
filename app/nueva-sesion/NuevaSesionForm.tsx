@@ -40,6 +40,8 @@ interface Props {
   persona: Persona;
   ejercicios: Ejercicio[];
   error?: string;
+  macrocicloId?: string;
+  returnTo?: string;
 }
 
 export function NuevaSesionForm({
@@ -48,6 +50,8 @@ export function NuevaSesionForm({
   persona,
   ejercicios,
   error,
+  macrocicloId,
+  returnTo,
 }: Props) {
   const [pesoActual, setPesoActual] = useState<number | "">(
     persona.masaCorporal,
@@ -167,6 +171,12 @@ export function NuevaSesionForm({
           <input type="hidden" name="requestId" value={requestId} />
           <input type="hidden" name="trainingMonths" value={trainingMonths} />
           <input type="hidden" name="rmMethod" value={rmMethod} />
+          {macrocicloId ? (
+            <input type="hidden" name="macrocicloId" value={macrocicloId} />
+          ) : null}
+          {returnTo ? (
+            <input type="hidden" name="returnTo" value={returnTo} />
+          ) : null}
 
           <Section title="Datos de la sesión">
             <label className="flex flex-col gap-2 py-4">

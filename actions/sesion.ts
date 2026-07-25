@@ -27,6 +27,8 @@ type CreateSesionInput = {
   finalRM: number;
   protocolData: Prisma.InputJsonValue | null;
   ejercicios: ResultadoInput[];
+  macrocicloId?: number | null;
+  returnTo?: string | null;
 };
 
 type CreateSesionResult = {
@@ -167,6 +169,15 @@ function parseCreateSesionInput(
   const estimatedRM = parseNonNegativeNumber(formData.get("estimatedRM"));
   const finalRM = parseNonNegativeNumber(formData.get("finalRM"));
   const protocolData = parseProtocolData(formData.get("protocolData"));
+  const rawMacrocicloId = formData.get("macrocicloId");
+  const macrocicloId =
+    typeof rawMacrocicloId === "string" && rawMacrocicloId.trim() !== ""
+      ? Number(rawMacrocicloId.trim())
+      : null;
+  const returnTo =
+    typeof formData.get("returnTo") === "string"
+      ? formData.get("returnTo")?.toString().trim() || null
+      : null;
 
   if (!cc) {
     return { ok: false, error: "Cédula inválida.", cc: "" };
@@ -235,6 +246,8 @@ function parseCreateSesionInput(
       finalRM,
       protocolData,
       ejercicios: resultados,
+      macrocicloId: macrocicloId && Number.isInteger(macrocicloId) && macrocicloId > 0 ? macrocicloId : null,
+      returnTo,
     },
   };
 }
@@ -511,6 +524,16 @@ export async function createSesionAction(formData: FormData) {
       saveError ?? "No fue posible crear la sesión. Intenta nuevamente.";
     redirect(
       `/nueva-sesion?cc=${encodeURIComponent(parsed.data.cc)}&error=${encodeURIComponent(errorMessage)}`,
+    );
+  }
+
+  if (
+    parsed.data.returnTo === "macrociclo" &&
+    parsed.data.macrocicloId &&
+    result?.sesionId
+  ) {
+    redirect(
+      `/macrociclo/${parsed.data.macrocicloId}/editar?cc=${encodeURIComponent(parsed.data.cc)}&paso=5`,
     );
   }
 

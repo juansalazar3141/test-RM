@@ -11,6 +11,11 @@ import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
 import { DashboardGuide } from "./DashboardGuide";
 import { calculateIMC, getIMCClassification } from "@/helpers/calculations";
+import { iniciarMacrocicloAction } from "@/actions/macrociclo";
+import {
+  obtenerMacrocicloAbierto,
+  obtenerMacrociclosPorPersona,
+} from "@/services/macrociclo.service";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -163,6 +168,11 @@ export default async function DashboardPage({
     },
   });
 
+  const [macrocicloAbierto, macrociclos] = await Promise.all([
+    obtenerMacrocicloAbierto(persona.id),
+    obtenerMacrociclosPorPersona(persona.id),
+  ]);
+
   const progress = getProgressSummary(sesiones);
   const latestSession = sesiones[0];
   const imc = calculateIMC(persona);
@@ -211,18 +221,65 @@ export default async function DashboardPage({
         </div>
       </header>
 
-      <IMCCard imc={imc} classification={imcClassification} />
+      <section className="space-y-4 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
+        <div className="space-y-1">
+          <h2 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
+            Macrociclo de entrenamiento
+          </h2>
+          <p className="text-sm text-text-secondary">
+            Planifica tu temporada con objetivos, periodos y mesociclos.
+          </p>
+        </div>
 
-      <ICCSection cc={cc} sexo={persona.sexo as "hombre" | "mujer" | "masculino" | "femenino"} cintura={persona.cintura} cadera={persona.cadera} />
+        {macrocicloAbierto ? (
+          <div className="space-y-3">
+            <div className="rounded-2xl border border-gray-200 bg-bg-main p-4 dark:border-white/10 dark:bg-bg-soft">
+              <p className="text-sm font-medium text-text-primary dark:text-white">
+                Tienes un macrociclo {macrocicloAbierto.estado === "borrador" ? "en borrador" : "activo"}
+              </p>
+              <p className="text-sm text-text-secondary">
+                {macrocicloAbierto.objetivoTipo === "competencia"
+                  ? `Competencia: ${new Intl.DateTimeFormat("es-ES", {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    }).format(macrocicloAbierto.fechaCompetencia ?? macrocicloAbierto.fechaFin)}`
+                  : `Objetivo salud hasta ${new Intl.DateTimeFormat("es-ES", {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    }).format(macrocicloAbierto.fechaFin)}`}
+              </p>
+            </div>
+            <PrimaryButton
+              href={`/macrociclo/${macrocicloAbierto.id}/editar?cc=${encodeURIComponent(cc)}`}
+            >
+              Continuar macrociclo
+            </PrimaryButton>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-text-secondary">
+              {macrociclos.some((m) => m.estado === "cerrado")
+                ? "Tu último macrociclo está cerrado. Puedes iniciar uno nuevo."
+                : "Aún no tienes macrociclos registrados."}
+            </p>
+            <form action={iniciarMacrocicloAction}>
+              <input type="hidden" name="cc" value={cc} />
+              <PrimaryButton type="submit">Realizar macrociclo</PrimaryButton>
+            </form>
+          </div>
+        )}
+      </section>
 
       <section className="space-y-4 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
-            Nueva sesión
+            Nueva sesión de test de fuerza máxima (RM) 
           </h2>
           <p className="text-sm text-text-secondary">
-            Guarda un entrenamiento para actualizar tu historial y revisar tus
-            resultados.
+            Determina tu fuerza máxima (RM) en diferentes ejercicios 
+            para obtener tus porcentajes de carga.
           </p>
         </div>
         <PrimaryButton href={newSessionHref}>Crear nueva sesión</PrimaryButton>
@@ -235,6 +292,10 @@ export default async function DashboardPage({
         saved={saved}
         deleted={deleted}
       />
+
+      <IMCCard imc={imc} classification={imcClassification} />
+
+      <ICCSection cc={cc} sexo={persona.sexo as "hombre" | "mujer" | "masculino" | "femenino"} cintura={persona.cintura} cadera={persona.cadera} />
 
       <Section title="Progreso inteligente">
         {progress.length === 0 ? (
@@ -267,8 +328,9 @@ export default async function DashboardPage({
       </PrimaryButton>
 
       <FloatingActionButton
-        href={newSessionHref}
-        label="+"
+        cc={cc}
+        macrocicloAbiertoId={macrocicloAbierto?.id}
+        macrocicloAbiertoEstado={macrocicloAbierto?.estado}
       />
     </main>
   );
