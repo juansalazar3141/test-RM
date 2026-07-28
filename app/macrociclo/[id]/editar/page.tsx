@@ -39,7 +39,7 @@ export default async function EditarMacrocicloPage({
     notFound();
   }
 
-  if (macrociclo.estado === "cerrado" || macrociclo.estado === "eliminado") {
+  if (macrociclo.estado !== "borrador") {
     redirect(`/macrociclo/${id}?cc=${encodeURIComponent(cc)}`);
   }
 

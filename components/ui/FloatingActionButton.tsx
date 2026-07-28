@@ -34,7 +34,9 @@ export function FloatingActionButton({
 
   const newSessionHref = `/nueva-sesion?cc=${encodeURIComponent(cc)}`;
   const macrocicloHref = macrocicloAbiertoId
-    ? `/macrociclo/${macrocicloAbiertoId}/editar?cc=${encodeURIComponent(cc)}`
+    ? macrocicloAbiertoEstado === "borrador"
+      ? `/macrociclo/${macrocicloAbiertoId}/editar?cc=${encodeURIComponent(cc)}`
+      : `/macrociclo/${macrocicloAbiertoId}?cc=${encodeURIComponent(cc)}`
     : undefined;
 
   const menuItemClass =
@@ -46,9 +48,13 @@ export function FloatingActionButton({
         <div className="mb-2 flex w-56 flex-col gap-1 rounded-2xl border border-gray-200 bg-bg-soft p-2 shadow-sm dark:border-white/6 dark:bg-bg-subtle">
           {macrocicloHref ? (
             <Link href={macrocicloHref} className={menuItemClass} onClick={() => setOpen(false)}>
-              Continuar macrociclo
-              {macrocicloAbiertoEstado === "borrador" && (
-                <span className="ml-2 text-xs text-text-tertiary">(borrador)</span>
+              {macrocicloAbiertoEstado === "borrador" ? (
+                <>
+                  Continuar macrociclo
+                  <span className="ml-2 text-xs text-text-tertiary">(borrador)</span>
+                </>
+              ) : (
+                "Ver macrociclo"
               )}
             </Link>
           ) : (

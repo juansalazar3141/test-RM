@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import {
   type ObjetivoTipo,
   type TipoEtapa,
@@ -539,6 +540,8 @@ export function PasoSemanas({
   mesociclos,
   semanasConfig,
   setSemanasConfig,
+  semanasSeleccionadas,
+  setSemanasSeleccionadas,
   buildPeriodizacionPayload,
   onContinuar,
 }: {
@@ -569,6 +572,8 @@ export function PasoSemanas({
       }
     >,
   ) => void;
+  semanasSeleccionadas: number[];
+  setSemanasSeleccionadas: (value: number[]) => void;
   buildPeriodizacionPayload: () => {
     periodos: { tipo: TipoPeriodo; porcentaje: number }[];
     etapasPorPeriodo: Record<TipoPeriodo, { tipo: TipoEtapa; porcentaje: number }[]>;
@@ -604,26 +609,57 @@ export function PasoSemanas({
 
   const payload = buildPeriodizacionPayload();
 
+  const numerosSemanas = calculado.semanas.map((s) => s.numeroSemana);
+  const seleccionadasActuales = semanasSeleccionadas.filter((n) =>
+    numerosSemanas.includes(n),
+  );
+  const todasSeleccionadas =
+    numerosSemanas.length > 0 &&
+    seleccionadasActuales.length === numerosSemanas.length;
+
+  function toggleSemana(numero: number) {
+    setSemanasSeleccionadas(
+      semanasSeleccionadas.includes(numero)
+        ? semanasSeleccionadas.filter((n) => n !== numero)
+        : [...semanasSeleccionadas, numero],
+    );
+  }
+
+  function toggleTodas() {
+    setSemanasSeleccionadas(todasSeleccionadas ? [] : numerosSemanas);
+  }
+
   function updateSemana(
     numero: number,
     field: keyof (typeof semanasConfig)[number],
     value: string,
   ) {
-    const current = semanasConfig[numero] ?? {
-      tipoMicrociclo: "corriente",
-      frecuencia: 0,
-      volumen: 0,
-      intensidad: 0,
-    };
     const parsed =
       field === "tipoMicrociclo" ? value : value === "" ? "" : Number(value);
-    setSemanasConfig({
-      ...semanasConfig,
-      [numero]: {
-        ...current,
-        [field]: parsed,
-      },
-    });
+
+    // Si la semana editada está seleccionada, el cambio se propaga a todas
+    // las semanas seleccionadas; si no, solo se modifica ella.
+    const objetivos = semanasSeleccionadas.includes(numero)
+      ? seleccionadasActuales
+      : [numero];
+
+    let next = semanasConfig;
+    for (const n of objetivos) {
+      const current = next[n] ?? {
+        tipoMicrociclo: "corriente",
+        frecuencia: 0,
+        volumen: 0,
+        intensidad: 0,
+      };
+      next = {
+        ...next,
+        [n]: {
+          ...current,
+          [field]: parsed,
+        },
+      };
+    }
+    setSemanasConfig(next);
   }
 
   return (
@@ -633,7 +669,27 @@ export function PasoSemanas({
           Microciclos semanales
         </h2>
         <p className="text-sm text-text-secondary">
-          Configura cada semana del macrociclo.
+          Configura cada semana del macrociclo. Selecciona varias semanas para
+          editarlas en grupo.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 dark:border-white/10 dark:bg-bg-main">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-text-secondary">
+          <input
+            type="checkbox"
+            checked={todasSeleccionadas}
+            onChange={toggleTodas}
+            className="h-4 w-4 accent-accent"
+          />
+          Seleccionar todas
+        </label>
+        <p className="text-xs text-text-secondary">
+          {seleccionadasActuales.length > 0
+            ? `${seleccionadasActuales.length} seleccionada${
+                seleccionadasActuales.length === 1 ? "" : "s"
+              }: los cambios se aplican a todas las seleccionadas`
+            : "Ninguna semana seleccionada"}
         </p>
       </div>
 
@@ -645,40 +701,47 @@ export function PasoSemanas({
             volumen: 0,
             intensidad: 0,
           };
+          const seleccionada = semanasSeleccionadas.includes(
+            semana.numeroSemana,
+          );
           return (
             <div
               key={semana.numeroSemana}
-              className="rounded-2xl border border-gray-200 bg-bg-main p-4 dark:border-white/10 dark:bg-bg-subtle"
+              className={[
+                "rounded-2xl border p-4 transition",
+                seleccionada
+                  ? "border-accent bg-accent/5 dark:border-accent dark:bg-accent/10"
+                  : "border-gray-200 bg-bg-main dark:border-white/10 dark:bg-bg-subtle",
+              ].join(" ")}
             >
               <div className="mb-3 flex items-center justify-between">
-                <p className="font-medium text-text-primary dark:text-white">
-                  Semana {semana.numeroSemana}
-                </p>
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={seleccionada}
+                    onChange={() => toggleSemana(semana.numeroSemana)}
+                    className="h-4 w-4 accent-accent"
+                  />
+                  <span className="font-medium text-text-primary dark:text-white">
+                    Semana {semana.numeroSemana}
+                  </span>
+                </label>
                 <p className="text-xs text-text-secondary">
                   {toISODate(semana.fechaInicio)} - {toISODate(semana.fechaFin)}
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <label className="block space-y-1">
+                <div className="block space-y-1">
                   <span className="text-xs text-text-secondary">Tipo</span>
-                  <select
+                  <SearchableSelect
                     value={config.tipoMicrociclo}
-                    onChange={(e) =>
-                      updateSemana(
-                        semana.numeroSemana,
-                        "tipoMicrociclo",
-                        e.target.value,
-                      )
+                    options={TIPOS_MICROCICLO}
+                    onChange={(value) =>
+                      updateSemana(semana.numeroSemana, "tipoMicrociclo", value)
                     }
-                    className="w-full rounded-xl border border-gray-200 bg-bg-soft px-3 py-2 text-sm text-text-primary outline-none dark:border-white/10 dark:bg-bg-main dark:text-white"
-                  >
-                    {TIPOS_MICROCICLO.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    ariaLabel={`Tipo de microciclo de la semana ${semana.numeroSemana}`}
+                  />
+                </div>
                 <label className="block space-y-1">
                   <span className="text-xs text-text-secondary">Frecuencia</span>
                   <input

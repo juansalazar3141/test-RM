@@ -237,6 +237,8 @@ export function MacrocicloWizard({
     return saved;
   });
 
+  const [semanasSeleccionadas, setSemanasSeleccionadas] = useState<number[]>([]);
+
   function irAPaso(nuevoPaso: number) {
     setPaso(Math.min(Math.max(nuevoPaso, 1), 10));
   }
@@ -452,6 +454,8 @@ export function MacrocicloWizard({
             }))}
             semanasConfig={semanasConfig}
             setSemanasConfig={setSemanasConfig}
+            semanasSeleccionadas={semanasSeleccionadas}
+            setSemanasSeleccionadas={setSemanasSeleccionadas}
             buildPeriodizacionPayload={buildPeriodizacionPayload}
             onContinuar={() => irAPaso(10)}
           />

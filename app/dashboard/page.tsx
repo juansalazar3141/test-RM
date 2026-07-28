@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 
@@ -178,6 +179,19 @@ export default async function DashboardPage({
   const imc = calculateIMC(persona);
   const imcClassification = getIMCClassification(imc);
   const newSessionHref = `/nueva-sesion?cc=${encodeURIComponent(cc)}`;
+  const macrocicloResumen = macrocicloAbierto
+    ? macrocicloAbierto.objetivoTipo === "competencia"
+      ? `Competencia: ${new Intl.DateTimeFormat("es-ES", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        }).format(macrocicloAbierto.fechaCompetencia ?? macrocicloAbierto.fechaFin)}`
+      : `Objetivo salud hasta ${new Intl.DateTimeFormat("es-ES", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        }).format(macrocicloAbierto.fechaFin)}`
+    : "";
   const sessionItems = sesiones.map((sesion, index) => {
     const exerciseCount = sesion.resultados.length;
     return {
@@ -233,29 +247,43 @@ export default async function DashboardPage({
 
         {macrocicloAbierto ? (
           <div className="space-y-3">
-            <div className="rounded-2xl border border-gray-200 bg-bg-main p-4 dark:border-white/10 dark:bg-bg-soft">
-              <p className="text-sm font-medium text-text-primary dark:text-white">
-                Tienes un macrociclo {macrocicloAbierto.estado === "borrador" ? "en borrador" : "activo"}
-              </p>
-              <p className="text-sm text-text-secondary">
-                {macrocicloAbierto.objetivoTipo === "competencia"
-                  ? `Competencia: ${new Intl.DateTimeFormat("es-ES", {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    }).format(macrocicloAbierto.fechaCompetencia ?? macrocicloAbierto.fechaFin)}`
-                  : `Objetivo salud hasta ${new Intl.DateTimeFormat("es-ES", {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    }).format(macrocicloAbierto.fechaFin)}`}
-              </p>
-            </div>
-            <PrimaryButton
-              href={`/macrociclo/${macrocicloAbierto.id}/editar?cc=${encodeURIComponent(cc)}`}
-            >
-              Continuar macrociclo
-            </PrimaryButton>
+            {macrocicloAbierto.estado === "borrador" ? (
+              <>
+                <div className="rounded-2xl border border-gray-200 bg-bg-main p-4 dark:border-white/10 dark:bg-bg-soft">
+                  <p className="text-sm font-medium text-text-primary dark:text-white">
+                    Tienes un macrociclo en borrador
+                  </p>
+                  <p className="text-sm text-text-secondary">
+                    {macrocicloResumen}
+                  </p>
+                </div>
+                <PrimaryButton
+                  href={`/macrociclo/${macrocicloAbierto.id}/editar?cc=${encodeURIComponent(cc)}`}
+                >
+                  Continuar macrociclo
+                </PrimaryButton>
+              </>
+            ) : (
+              <Link
+                href={`/macrociclo/${macrocicloAbierto.id}?cc=${encodeURIComponent(cc)}`}
+                className="flex items-center justify-between gap-4 rounded-2xl border border-gray-200 bg-bg-main p-4 transition hover:bg-bg-subtle dark:border-white/10 dark:bg-bg-soft dark:hover:bg-bg-subtle"
+              >
+                <div>
+                  <p className="text-sm font-medium text-text-primary dark:text-white">
+                    Tienes un macrociclo activo
+                  </p>
+                  <p className="text-sm text-text-secondary">
+                    {macrocicloResumen}
+                  </p>
+                </div>
+                <span
+                  aria-hidden="true"
+                  className="text-lg text-text-tertiary"
+                >
+                  →
+                </span>
+              </Link>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
