@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
+import { MesocicloCargaEditor } from "@/components/macrociclo/MesocicloCargaEditor";
 import {
   type ObjetivoTipo,
   type TipoEtapa,
@@ -23,6 +24,7 @@ import {
   velocidadLegerKmh,
 } from "@/lib/macrociclo";
 import { calcularPeriodizacion } from "@/lib/macrociclo-periodizacion";
+import { type CargaMesocicloInputData } from "@/lib/mesociclo-carga";
 import {
   guardarRmAction,
   guardarVo2maxAction,
@@ -588,6 +590,7 @@ export function PasoSemanas({
   };
   onContinuar: () => void;
 }) {
+  const router = useRouter();
   const calculado = useMemo(() => {
     return calcularPeriodizacion({
       fechaInicio,
@@ -795,6 +798,7 @@ export function PasoSemanas({
         action={async (formData) => {
           const result = await guardarPeriodizacionSinRedirectAction(formData);
           if (result.success) {
+            router.refresh();
             onContinuar();
           } else {
             alert(result.error);
@@ -815,6 +819,120 @@ export function PasoSemanas({
 
         <PrimaryButton type="submit">Guardar periodización y continuar</PrimaryButton>
       </form>
+    </div>
+  );
+}
+
+export function PasoCarga({
+  cc,
+  macrocicloId,
+  mesociclos,
+  onContinuar,
+}: {
+  cc: string;
+  macrocicloId: number;
+  mesociclos: Array<{
+    id: number;
+    tipo: string;
+    fechaInicio: Date;
+    fechaFin: Date;
+    semanas: Array<{
+      numeroSemana: number;
+      frecuencia: number;
+      fechaInicio: Date;
+      fechaFin: Date;
+    }>;
+    carga: CargaMesocicloInputData | null;
+  }>;
+  onContinuar: () => void;
+}) {
+  const [selectedId, setSelectedId] = useState(mesociclos[0]?.id);
+  const [guardados, setGuardados] = useState<Set<number>>(() => {
+    const set = new Set<number>();
+    for (const mesociclo of mesociclos) {
+      if (mesociclo.carga) {
+        set.add(mesociclo.id);
+      }
+    }
+    return set;
+  });
+
+  const mesociclo = mesociclos.find((m) => m.id === selectedId);
+
+  if (mesociclos.length === 0) {
+    return (
+      <div className="space-y-5">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold text-text-primary dark:text-white">
+            Dosificación de carga
+          </h2>
+          <p className="text-sm text-text-secondary">
+            Primero debes guardar la periodización en el paso anterior.
+          </p>
+        </div>
+        <PrimaryButton type="button" onClick={onContinuar}>
+          Continuar a revisión
+        </PrimaryButton>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold text-text-primary dark:text-white">
+          Dosificación de carga
+        </h2>
+        <p className="text-sm text-text-secondary">
+          Selecciona un mesociclo y distribuye sus minutos por dirección,
+          microciclo y sesión.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {mesociclos.map((m) => {
+          const activo = m.id === selectedId;
+          const tieneCarga = guardados.has(m.id) || m.carga;
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setSelectedId(m.id)}
+              className={[
+                "rounded-full px-3 py-1 text-xs font-medium transition",
+                activo
+                  ? "bg-accent text-white"
+                  : tieneCarga
+                    ? "bg-bg-subtle text-text-primary dark:text-white"
+                    : "bg-bg-soft text-text-tertiary",
+              ].join(" ")}
+            >
+              {MESES_POR_TIPO_LABEL[m.tipo as TipoMesociclo] ?? m.tipo}
+              {tieneCarga ? " ✓" : ""}
+            </button>
+          );
+        })}
+      </div>
+
+      {mesociclo ? (
+        <MesocicloCargaEditor
+          cc={cc}
+          macrocicloId={macrocicloId}
+          mesocicloId={mesociclo.id}
+          semanas={mesociclo.semanas.map((s) => ({
+            numeroSemana: s.numeroSemana,
+            frecuencia: s.frecuencia,
+          }))}
+          cargaInicial={mesociclo.carga}
+          onGuardado={() =>
+            setGuardados((prev) => new Set([...Array.from(prev), mesociclo.id]))
+          }
+        />
+      ) : null}
+
+      <PrimaryButton type="button" onClick={onContinuar}>
+        Continuar a revisión
+      </PrimaryButton>
     </div>
   );
 }
@@ -862,6 +980,7 @@ export function PasoRevision({
   fechaFin,
   sesionRmId,
   vo2maxSnapshot,
+  mesociclos,
   buildPeriodizacionPayload,
 }: {
   cc: string;
@@ -871,6 +990,7 @@ export function PasoRevision({
   fechaFin: string;
   sesionRmId: number | "";
   vo2maxSnapshot: Vo2maxSnapshot | null;
+  mesociclos: Array<{ id: number; tipo: string; carga: CargaMesocicloInputData | null }>;
   buildPeriodizacionPayload: () => {
     periodos: { tipo: TipoPeriodo; porcentaje: number }[];
     etapasPorPeriodo: Record<TipoPeriodo, { tipo: TipoEtapa; porcentaje: number }[]>;
@@ -981,19 +1101,34 @@ export function PasoRevision({
       <div className="rounded-2xl border border-gray-200 bg-bg-main p-4 dark:border-white/10 dark:bg-bg-subtle">
         <p className="text-sm text-text-secondary">Mesociclos</p>
         <ul className="mt-2 grid gap-1 sm:grid-cols-2">
-          {payload.mesociclos.map((mesociclo) => (
-            <li
-              key={mesociclo.tipo}
-              className="flex items-center justify-between gap-3 text-sm"
-            >
-              <span className="text-text-secondary">
-                {MESES_POR_TIPO_LABEL[mesociclo.tipo]}
-              </span>
-              <span className="font-medium text-text-primary dark:text-white">
-                {mesociclo.porcentaje}%
-              </span>
-            </li>
-          ))}
+          {payload.mesociclos.map((mesociclo) => {
+            const persistido = mesociclos.find(
+              (m) => m.tipo === mesociclo.tipo,
+            );
+            const tieneCarga = Boolean(persistido?.carga);
+            return (
+              <li
+                key={mesociclo.tipo}
+                className="flex items-center justify-between gap-3 text-sm"
+              >
+                <span className="text-text-secondary">
+                  {MESES_POR_TIPO_LABEL[mesociclo.tipo]}
+                </span>
+                <span className="font-medium text-text-primary dark:text-white">
+                  {mesociclo.porcentaje}%{" "}
+                  <span
+                    className={
+                      tieneCarga
+                        ? "text-accent"
+                        : "text-text-tertiary"
+                    }
+                  >
+                    {tieneCarga ? "· ✓ carga" : "· pendiente"}
+                  </span>
+                </span>
+              </li>
+            );
+          })}
         </ul>
       </div>
 

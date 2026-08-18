@@ -17,6 +17,7 @@ import {
   toISODate,
 } from "@/lib/macrociclo";
 import { calcularPeriodizacion } from "@/lib/macrociclo-periodizacion";
+import { type CargaMesocicloInputData } from "@/lib/mesociclo-carga";
 import {
   guardarPasoObjetivoFechasAction,
   guardarMedidasAction,
@@ -29,6 +30,7 @@ import {
   PasoEtapas,
   PasoMesociclos,
   PasoSemanas,
+  PasoCarga,
   PasoRevision,
 } from "./wizard-steps";
 
@@ -39,8 +41,14 @@ type MacrocicloPeriodo = {
 };
 
 type MacrocicloMesociclo = {
+  id: number;
   tipo: string;
   porcentaje: number;
+  fechaInicio: Date;
+  fechaFin: Date;
+  orden: number;
+  semanas: Array<{ numeroSemana: number; frecuencia: number; fechaInicio: Date; fechaFin: Date }>;
+  carga: unknown;
 };
 
 type MacrocicloSemana = {
@@ -101,7 +109,8 @@ const PASOS = [
   { numero: 7, label: "Etapas" },
   { numero: 8, label: "Mesociclos" },
   { numero: 9, label: "Semanas" },
-  { numero: 10, label: "Revisión" },
+  { numero: 10, label: "Carga" },
+  { numero: 11, label: "Revisión" },
 ];
 
 export function MacrocicloWizard({
@@ -115,7 +124,7 @@ export function MacrocicloWizard({
   sesionesRm: SesionRm[];
   pasoInicial: number;
 }) {
-  const [paso, setPaso] = useState(Math.min(Math.max(pasoInicial, 1), 10));
+  const [paso, setPaso] = useState(Math.min(Math.max(pasoInicial, 1), 11));
 
   const [objetivoTipo, setObjetivoTipo] = useState<ObjetivoTipo>(
     (macrociclo.objetivoTipo as ObjetivoTipo) || "salud",
@@ -141,10 +150,23 @@ export function MacrocicloWizard({
     macrociclo.sesionRmId ?? "",
   );
 
-  const [vo2Metodo, setVo2Metodo] = useState<string>("cooper");
-  const [vo2CooperDistancia, setVo2CooperDistancia] = useState("");
-  const [vo2Directo, setVo2Directo] = useState("");
-  const [vo2LegerEtapa, setVo2LegerEtapa] = useState("");
+  const vo2maxInicial =
+    (macrociclo.vo2maxSnapshot as Vo2maxSnapshot | null) ?? null;
+
+  const [vo2Metodo, setVo2Metodo] = useState<string>(
+    vo2maxInicial?.metodo ?? "cooper",
+  );
+  const [vo2CooperDistancia, setVo2CooperDistancia] = useState(
+    vo2maxInicial?.metodo === "cooper"
+      ? String(vo2maxInicial.distanciaMetros)
+      : "",
+  );
+  const [vo2Directo, setVo2Directo] = useState(
+    vo2maxInicial?.metodo === "directo" ? String(vo2maxInicial.valor) : "",
+  );
+  const [vo2LegerEtapa, setVo2LegerEtapa] = useState(
+    vo2maxInicial?.metodo === "leger" ? String(vo2maxInicial.etapa) : "",
+  );
 
   const [periodos, setPeriodos] = useState<Record<TipoPeriodo, number | "">>(() => {
     const saved: Partial<Record<TipoPeriodo, number>> = {};
@@ -462,6 +484,18 @@ export function MacrocicloWizard({
         );
       case 10:
         return (
+          <PasoCarga
+            cc={persona.cc}
+            macrocicloId={macrociclo.id}
+            mesociclos={macrociclo.mesociclos.map((m) => ({
+              ...m,
+              carga: m.carga as CargaMesocicloInputData | null,
+            }))}
+            onContinuar={() => irAPaso(11)}
+          />
+        );
+      case 11:
+        return (
           <PasoRevision
             cc={persona.cc}
             macrocicloId={macrociclo.id}
@@ -472,6 +506,10 @@ export function MacrocicloWizard({
             vo2maxSnapshot={
               (macrociclo.vo2maxSnapshot as Vo2maxSnapshot | null) ?? null
             }
+            mesociclos={macrociclo.mesociclos.map((m) => ({
+              ...m,
+              carga: m.carga as CargaMesocicloInputData | null,
+            }))}
             buildPeriodizacionPayload={buildPeriodizacionPayload}
           />
         );
@@ -530,7 +568,7 @@ export function MacrocicloWizard({
           ← Atrás
         </button>
         <span className="text-sm text-text-secondary">
-          Paso {paso} de 10
+          Paso {paso} de 11
         </span>
       </div>
 

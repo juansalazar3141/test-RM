@@ -405,6 +405,9 @@ export default async function MacrocicloDetallePage({
                   <th className="px-4 py-3 text-left font-medium text-text-secondary">
                     Semanas
                   </th>
+                  <th className="px-4 py-3 text-left font-medium text-text-secondary">
+                    Carga
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-bg-soft dark:divide-white/8">
@@ -427,6 +430,14 @@ export default async function MacrocicloDetallePage({
                           (semana) => semana.mesocicloId === mesociclo.id,
                         ).length
                       }
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/macrociclo/${id}/mesociclo/${mesociclo.id}/carga?cc=${encodeURIComponent(cc)}`}
+                        className="text-sm font-medium text-accent hover:underline"
+                      >
+                        {mesociclo.carga ? "Editar ✓" : "Dosificar"}
+                      </Link>
                     </td>
                   </tr>
                 ))}

@@ -27,11 +27,13 @@ import {
   crearORecuperarBorrador,
   eliminarMacrociclo,
   guardarMedidasSnapshot,
-  guardarPeriodizacion,
   guardarPasoObjetivoFechas,
+  guardarPeriodizacion,
   guardarRmSnapshot,
   guardarVo2maxSnapshot,
+  guardarCargaMesociclo,
 } from "@/services/macrociclo.service";
+import { type CargaMesocicloInputData } from "@/lib/mesociclo-carga";
 
 function getContext() {
   return { userType: "persona" as const };
@@ -446,6 +448,54 @@ export async function eliminarMacrocicloAction(formData: FormData) {
   await eliminarMacrociclo({ id, personaId: persona.id, context: getContext() });
 
   redirect(`/dashboard?cc=${encodeURIComponent(cc)}`);
+}
+
+export async function guardarCargaMesocicloAction(
+  formData: FormData,
+): Promise<{ success: true } | { success: false; error: string }> {
+  const cc = getString(formData, "cc");
+  const id = getInt(formData, "id");
+  const mesocicloId = getInt(formData, "mesocicloId");
+  const cargaRaw = getString(formData, "carga");
+
+  if (!cc || !id || !mesocicloId || !cargaRaw) {
+    return { success: false, error: "Faltan datos para guardar la carga." };
+  }
+
+  const persona = await getPersona(cc);
+  if (!persona) {
+    return { success: false, error: "Persona no encontrada." };
+  }
+
+  let carga: CargaMesocicloInputData | null = null;
+  try {
+    carga = JSON.parse(cargaRaw) as CargaMesocicloInputData;
+  } catch {
+    return { success: false, error: "Formato de datos inválido." };
+  }
+
+  if (!carga) {
+    return { success: false, error: "Formato de datos inválido." };
+  }
+
+  try {
+    await guardarCargaMesociclo({
+      macrocicloId: id,
+      personaId: persona.id,
+      mesocicloId,
+      data: carga,
+      context: getContext(),
+    });
+
+    return { success: true };
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "No fue posible guardar la carga del mesociclo.";
+
+    return { success: false, error: message };
+  }
 }
 
 export async function procesarPdfAntropometriaAction(formData: FormData): Promise<

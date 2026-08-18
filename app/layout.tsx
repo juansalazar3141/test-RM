@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { AppThemeToggle } from "../components/ui/AppThemeToggle";
+import { NumberInputWheelGuard } from "../components/ui/NumberInputWheelGuard";
 import { ensureDefaultAdminUser } from "@/lib/bootstrap";
 import "./globals.css";
 
@@ -54,6 +55,7 @@ export default function RootLayout({
         <div className="mx-auto min-h-screen w-full max-w-105 px-4 py-6 lg:max-w-6xl">
           {children}
         </div>
+        <NumberInputWheelGuard />
       </body>
     </html>
   );

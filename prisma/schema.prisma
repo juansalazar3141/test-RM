@@ -173,8 +173,23 @@ model MacrocicloMesociclo {
 
   macrociclo Macrociclo        @relation(fields: [macrocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   semanas    MacrocicloSemana[]
+  carga      MesocicloCarga?
 
   @@index([macrocicloId, orden])
+}
+
+model MesocicloCarga {
+  id              Int      @id @default(autoincrement())
+  mesocicloId     Int      @unique
+  tiempoSesionMin Int
+  direcciones     Json // [{ id: string, nombre: string }]
+  volumen         Json // { [direccionId]: porcentaje } — debe sumar 100
+  microciclos     Json // { [direccionId]: { [numeroSemana]: porcentaje } } — suma 100 por dirección
+  sesiones        Json // { [direccionId]: { [numeroSemana]: { [sesionIdx]: porcentaje } } } — suma 100 por semana
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  mesociclo MacrocicloMesociclo @relation(fields: [mesocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 }
 
 model MacrocicloSemana {
