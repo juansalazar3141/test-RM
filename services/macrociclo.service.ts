@@ -266,7 +266,7 @@ export async function guardarMedidasSnapshot({
       where: { id, personaId },
       data: {
         medidasSnapshot: medidas as Prisma.InputJsonValue,
-        pasoActual: Math.max(pasoActual, 4),
+        pasoActual: Math.max(pasoActual, 3),
       },
     });
 
@@ -323,7 +323,7 @@ export async function guardarRmSnapshot({
     data: {
       sesionRmId,
       rmSnapshot: rmSnapshot as Prisma.InputJsonValue,
-      pasoActual: Math.max(pasoActual, 5),
+      pasoActual: Math.max(pasoActual, 4),
     },
   });
 
@@ -355,7 +355,7 @@ export async function guardarVo2maxSnapshot({
     where: { id, personaId },
     data: {
       vo2maxSnapshot: vo2max as Prisma.InputJsonValue,
-      pasoActual: Math.max(pasoActual, 6),
+      pasoActual: Math.max(pasoActual, 5),
     },
   });
 
@@ -468,7 +468,7 @@ export async function guardarPeriodizacion({
 
       if (!mesocicloId) continue;
 
-      await tx.macrocicloSemana.create({
+      const semanaCreada = await tx.macrocicloSemana.create({
         data: {
           macrocicloId: id,
           mesocicloId,
@@ -478,16 +478,31 @@ export async function guardarPeriodizacion({
           fechaFin: semanaCalculada.fechaFin,
           tipoMicrociclo: semanaInput?.tipoMicrociclo ?? "corriente",
           frecuencia: semanaInput?.frecuencia ?? 0,
+          series: semanaInput?.series ?? 0,
+          repeticiones: semanaInput?.repeticiones ?? 0,
           volumen: semanaInput?.volumen ?? 0,
           intensidad: semanaInput?.intensidad ?? 0,
           notas: semanaInput?.notas,
         },
       });
+
+      if (semanaInput?.ejercicios && semanaInput.ejercicios.length > 0) {
+        await tx.macrocicloSemanaEjercicio.createMany({
+          data: semanaInput.ejercicios.map((e) => ({
+            macrocicloSemanaId: semanaCreada.id,
+            ejercicioId: e.ejercicioId,
+            formulaRm: e.formulaRm,
+            rm: e.rm,
+            peso: e.peso,
+            volumen: e.volumen,
+          })),
+        });
+      }
     }
 
     await tx.macrociclo.update({
       where: { id },
-      data: { pasoActual: Math.max(pasoActual, 10) },
+      data: { pasoActual: Math.max(pasoActual, 9) },
     });
 
     await tx.macrocicloAuditLog.create({
@@ -581,7 +596,16 @@ export async function obtenerMacrocicloPorId(id: number) {
           carga: true,
         },
       },
-      semanas: { orderBy: { numeroSemana: "asc" } },
+      semanas: {
+        orderBy: { numeroSemana: "asc" },
+        include: {
+          ejercicios: {
+            include: {
+              ejercicio: { select: { id: true, nombre: true } },
+            },
+          },
+        },
+      },
       auditLogs: { orderBy: { createdAt: "desc" } },
     },
   });

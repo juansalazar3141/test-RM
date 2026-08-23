@@ -20,7 +20,6 @@ import {
   parseDateInput,
   velocidadLegerKmh,
 } from "@/lib/macrociclo";
-import { extraerAntropometriaDesdePdf } from "@/lib/pdf-antropometria";
 import {
   activarMacrociclo,
   cerrarMacrociclo,
@@ -154,7 +153,7 @@ export async function guardarMedidasAction(formData: FormData) {
     redirectToWizard(cc, id, 3);
   }
 
-  if (!medidas) redirectToWizard(cc, id, 3);
+  if (!medidas) redirectToWizard(cc, id, 2);
 
   const macrociclo = await prisma.macrociclo.findUnique({
     where: { id, personaId: persona.id },
@@ -170,7 +169,7 @@ export async function guardarMedidasAction(formData: FormData) {
     context: getContext(),
   });
 
-  redirectToWizard(cc, id, 4);
+  redirectToWizard(cc, id, 3);
 }
 
 export async function guardarRmAction(formData: FormData) {
@@ -194,7 +193,7 @@ export async function guardarRmAction(formData: FormData) {
     },
   });
 
-  if (!sesion) redirectToWizard(cc, id, 4);
+  if (!sesion) redirectToWizard(cc, id, 3);
 
   const rmSnapshot = {
     sesionId: sesion.id,
@@ -210,6 +209,14 @@ export async function guardarRmAction(formData: FormData) {
       carga: r.carga,
       epley: r.epley,
       brzycki: r.brzycki,
+      lombardi: r.lombardi,
+      lander: r.lander,
+      oconnor: r.oconnor,
+      mayhew: r.mayhew,
+      wathen: r.wathen,
+      baechle: r.baechle,
+      casas: r.casas,
+      nacleiro: r.nacleiro,
     })),
   };
 
@@ -227,7 +234,7 @@ export async function guardarRmAction(formData: FormData) {
     context: getContext(),
   });
 
-  redirectToWizard(cc, id, 5);
+  redirectToWizard(cc, id, 4);
 }
 
 export async function guardarVo2maxAction(formData: FormData) {
@@ -244,18 +251,18 @@ export async function guardarVo2maxAction(formData: FormData) {
 
   if (metodo === "cooper") {
     const distancia = getNumber(formData, "distanciaMetros");
-    if (!distancia || distancia <= 0) redirectToWizard(cc, id, 5);
+    if (!distancia || distancia <= 0) redirectToWizard(cc, id, 4);
     const valor = (distancia - 504.9) / 44.73;
     vo2max = { metodo, distanciaMetros: distancia, valor };
   } else if (metodo === "directo") {
     const valor = getNumber(formData, "valor");
-    if (!valor || valor <= 0) redirectToWizard(cc, id, 5);
+    if (!valor || valor <= 0) redirectToWizard(cc, id, 4);
     vo2max = { metodo, valor };
   } else {
     const etapa = getNumber(formData, "etapa");
 
     if (!etapa || etapa < 1 || !Number.isInteger(etapa)) {
-      redirectToWizard(cc, id, 5);
+      redirectToWizard(cc, id, 4);
     }
 
     const etapaFinal = etapa as number;
@@ -280,7 +287,7 @@ export async function guardarVo2maxAction(formData: FormData) {
     context: getContext(),
   });
 
-  redirectToWizard(cc, id, 6);
+  redirectToWizard(cc, id, 5);
 }
 
 type PeriodizacionPayload = {
@@ -338,7 +345,8 @@ async function parsePeriodizacionFormData(
     (s) =>
       Number.isInteger(s.numeroSemana) &&
       s.numeroSemana > 0 &&
-      isTipoMicrociclo(s.tipoMicrociclo),
+      isTipoMicrociclo(s.tipoMicrociclo) &&
+      Array.isArray(s.ejercicios),
   );
 
   const macrociclo = await prisma.macrociclo.findUnique({
@@ -380,7 +388,7 @@ export async function guardarPeriodizacionAction(formData: FormData) {
     );
   }
 
-  redirectToWizard(result.cc, result.id, 10);
+  redirectToWizard(result.cc, result.id, 9);
 }
 
 export async function guardarPeriodizacionSinRedirectAction(formData: FormData): Promise<
@@ -494,46 +502,6 @@ export async function guardarCargaMesocicloAction(
         ? error.message
         : "No fue posible guardar la carga del mesociclo.";
 
-    return { success: false, error: message };
-  }
-}
-
-export async function procesarPdfAntropometriaAction(formData: FormData): Promise<
-  | { success: true; medidas: MedidasSnapshot; reconocido: boolean }
-  | { success: false; error: string }
-> {
-  const cc = getString(formData, "cc");
-  const id = getInt(formData, "id");
-  const archivo = formData.get("archivo");
-
-  if (!cc || !id) {
-    return { success: false, error: "Sesión inválida." };
-  }
-
-  const persona = await getPersona(cc);
-  if (!persona) {
-    return { success: false, error: "Persona no encontrada." };
-  }
-
-  const macrociclo = await prisma.macrociclo.findUnique({
-    where: { id, personaId: persona.id },
-  });
-  if (!macrociclo) {
-    return { success: false, error: "Macrociclo no encontrado." };
-  }
-
-  if (!(archivo instanceof File) || archivo.size === 0) {
-    return { success: false, error: "Debes seleccionar un archivo PDF." };
-  }
-
-  try {
-    const bytes = await archivo.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    const { medidas, reconocido } = await extraerAntropometriaDesdePdf(buffer);
-
-    return { success: true, medidas, reconocido };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Error al procesar PDF.";
     return { success: false, error: message };
   }
 }

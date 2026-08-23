@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
@@ -532,6 +532,59 @@ export function PasoMesociclos({
   );
 }
 
+function formatNumber(value: number): string {
+  return Number(value).toLocaleString("es-CO", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+  });
+}
+
+type SemanaEjercicioConfig = {
+  ejercicioId: number;
+  formulaRm: string;
+  rm: number;
+  peso: number;
+  volumen: number;
+};
+
+type SemanaConfig = {
+  tipoMicrociclo: TipoMicrociclo;
+  frecuencia: number | "";
+  series: number | "";
+  repeticiones: number | "";
+  volumen: number | "";
+  intensidad: number | "";
+  ejercicios: SemanaEjercicioConfig[];
+};
+
+type ResultadoRmCompleto = {
+  ejercicioId: number;
+  ejercicio: { nombre: string };
+  epley: number;
+  brzycki: number;
+  lombardi: number;
+  lander: number;
+  oconnor: number;
+  mayhew: number;
+  wathen: number;
+  baechle: number;
+  casas: number;
+  nacleiro: number;
+};
+
+const FORMULAS_RM = [
+  { value: "epley", label: "Epley" },
+  { value: "brzycki", label: "Brzycki" },
+  { value: "lombardi", label: "Lombardi" },
+  { value: "lander", label: "Lander" },
+  { value: "oconnor", label: "O'Connor" },
+  { value: "mayhew", label: "Mayhew" },
+  { value: "wathen", label: "Wathen" },
+  { value: "baechle", label: "Baechle" },
+  { value: "casas", label: "Casas" },
+  { value: "nacleiro", label: "Nacleiro" },
+] as const;
+
 export function PasoSemanas({
   cc,
   macrocicloId,
@@ -544,6 +597,7 @@ export function PasoSemanas({
   setSemanasConfig,
   semanasSeleccionadas,
   setSemanasSeleccionadas,
+  resultadosRm,
   buildPeriodizacionPayload,
   onContinuar,
 }: {
@@ -554,28 +608,11 @@ export function PasoSemanas({
   periodos: { tipo: TipoPeriodo; porcentaje: number | "" }[];
   etapasPorPeriodo: Record<TipoPeriodo, { tipo: TipoEtapa; porcentaje: number | "" }[]>;
   mesociclos: { tipo: TipoMesociclo; porcentaje: number | "" }[];
-  semanasConfig: Record<
-    number,
-    {
-      tipoMicrociclo: TipoMicrociclo;
-      frecuencia: number | "";
-      volumen: number | "";
-      intensidad: number | "";
-    }
-  >;
-  setSemanasConfig: (
-    value: Record<
-      number,
-      {
-        tipoMicrociclo: TipoMicrociclo;
-        frecuencia: number | "";
-        volumen: number | "";
-        intensidad: number | "";
-      }
-    >,
-  ) => void;
+  semanasConfig: Record<number, SemanaConfig>;
+  setSemanasConfig: (value: Record<number, SemanaConfig>) => void;
   semanasSeleccionadas: number[];
   setSemanasSeleccionadas: (value: number[]) => void;
+  resultadosRm: ResultadoRmCompleto[];
   buildPeriodizacionPayload: () => {
     periodos: { tipo: TipoPeriodo; porcentaje: number }[];
     etapasPorPeriodo: Record<TipoPeriodo, { tipo: TipoEtapa; porcentaje: number }[]>;
@@ -584,13 +621,99 @@ export function PasoSemanas({
       numeroSemana: number;
       tipoMicrociclo: TipoMicrociclo;
       frecuencia: number;
+      series: number;
+      repeticiones: number;
       volumen: number;
       intensidad: number;
+      ejercicios: SemanaEjercicioConfig[];
     }[];
   };
   onContinuar: () => void;
 }) {
   const router = useRouter();
+
+  function esAbdominal(nombre: string): boolean {
+    return /abdominal/i.test(nombre);
+  }
+
+  function getRmValue(resultado: ResultadoRmCompleto, formula: string): number {
+    const value = (resultado as Record<string, unknown>)[formula];
+    return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  }
+
+  function getSemanaConfigInicial(): SemanaConfig {
+    return {
+      tipoMicrociclo: "corriente",
+      frecuencia: 0,
+      series: 0,
+      repeticiones: 0,
+      volumen: 0,
+      intensidad: 0,
+      ejercicios: [],
+    };
+  }
+
+  function crearEjerciciosIniciales(): SemanaEjercicioConfig[] {
+    return resultadosRm
+      .filter((r) => !esAbdominal(r.ejercicio.nombre))
+      .map((r) => ({
+        ejercicioId: r.ejercicioId,
+        formulaRm: "epley",
+        rm: r.epley,
+        peso: 0,
+        volumen: 0,
+      }));
+  }
+
+  function calcularVolumenTotal(ejercicios: SemanaEjercicioConfig[]): number {
+    return ejercicios.reduce((total, e) => total + e.volumen, 0);
+  }
+
+  function calcularEjercicioIndividual(
+    ejercicioId: number,
+    formulaRm: string,
+    series: number,
+    repeticiones: number,
+    intensidad: number,
+  ): { rm: number; peso: number; volumen: number } {
+    const resultado = resultadosRm.find((r) => r.ejercicioId === ejercicioId);
+    if (
+      !resultado ||
+      esAbdominal(resultado.ejercicio.nombre) ||
+      series <= 0 ||
+      repeticiones <= 0 ||
+      intensidad <= 0
+    ) {
+      return { rm: 0, peso: 0, volumen: 0 };
+    }
+    const rm = getRmValue(resultado, formulaRm);
+    const peso = rm * (intensidad / 100);
+    const volumen = series * repeticiones * peso;
+    return { rm, peso, volumen };
+  }
+
+  function recalcularEjercicios(
+    current: SemanaConfig,
+    series: number,
+    repeticiones: number,
+    intensidad: number,
+  ): SemanaEjercicioConfig[] {
+    const base =
+      current.ejercicios.length > 0
+        ? current.ejercicios
+        : crearEjerciciosIniciales();
+    return base.map((e) => ({
+      ...e,
+      ...calcularEjercicioIndividual(
+        e.ejercicioId,
+        e.formulaRm,
+        series,
+        repeticiones,
+        intensidad,
+      ),
+    }));
+  }
+
   const calculado = useMemo(() => {
     return calcularPeriodizacion({
       fechaInicio,
@@ -634,7 +757,7 @@ export function PasoSemanas({
 
   function updateSemana(
     numero: number,
-    field: keyof (typeof semanasConfig)[number],
+    field: keyof SemanaConfig,
     value: string,
   ) {
     const parsed =
@@ -648,22 +771,122 @@ export function PasoSemanas({
 
     let next = semanasConfig;
     for (const n of objetivos) {
-      const current = next[n] ?? {
-        tipoMicrociclo: "corriente",
-        frecuencia: 0,
-        volumen: 0,
-        intensidad: 0,
+      const current = next[n] ?? getSemanaConfigInicial();
+      const updated: SemanaConfig = { ...current, [field]: parsed };
+
+      if (
+        field === "series" ||
+        field === "repeticiones" ||
+        field === "intensidad"
+      ) {
+        const series =
+          field === "series" ? Number(parsed || 0) : Number(current.series || 0);
+        const repeticiones =
+          field === "repeticiones"
+            ? Number(parsed || 0)
+            : Number(current.repeticiones || 0);
+        const intensidad =
+          field === "intensidad"
+            ? Number(parsed || 0)
+            : Number(current.intensidad || 0);
+
+        const nuevosEjercicios = recalcularEjercicios(
+          current,
+          series,
+          repeticiones,
+          intensidad,
+        );
+        updated.ejercicios = nuevosEjercicios;
+        updated.volumen = calcularVolumenTotal(nuevosEjercicios);
+      }
+
+      next = {
+        ...next,
+        [n]: updated,
       };
+    }
+    setSemanasConfig(next);
+  }
+
+  function updateFormulaEjercicio(
+    numero: number,
+    ejercicioId: number,
+    formulaRm: string,
+  ) {
+    const objetivos = semanasSeleccionadas.includes(numero)
+      ? seleccionadasActuales
+      : [numero];
+
+    let next = semanasConfig;
+    for (const n of objetivos) {
+      const current = next[n] ?? getSemanaConfigInicial();
+      const series = Number(current.series || 0);
+      const repeticiones = Number(current.repeticiones || 0);
+      const intensidad = Number(current.intensidad || 0);
+
+      const nuevosEjercicios = current.ejercicios.map((e) =>
+        e.ejercicioId === ejercicioId
+          ? {
+              ...e,
+              formulaRm,
+              ...calcularEjercicioIndividual(
+                e.ejercicioId,
+                formulaRm,
+                series,
+                repeticiones,
+                intensidad,
+              ),
+            }
+          : e,
+      );
+
       next = {
         ...next,
         [n]: {
           ...current,
-          [field]: parsed,
+          ejercicios: nuevosEjercicios,
+          volumen: calcularVolumenTotal(nuevosEjercicios),
         },
       };
     }
     setSemanasConfig(next);
   }
+
+  // Inicializa/recalcula ejercicios para semanas que ya tengan series/reps/intensidad
+  // pero que aún no tengan el desglose por ejercicio (por ejemplo, datos antiguos).
+  useEffect(() => {
+    let changed = false;
+    const next = { ...semanasConfig };
+    for (const semana of calculado.semanas) {
+      const config = next[semana.numeroSemana];
+      if (!config) continue;
+      const series = Number(config.series || 0);
+      const repeticiones = Number(config.repeticiones || 0);
+      const intensidad = Number(config.intensidad || 0);
+      if (
+        config.ejercicios.length === 0 &&
+        resultadosRm.length > 0 &&
+        (series > 0 || repeticiones > 0 || intensidad > 0)
+      ) {
+        const nuevosEjercicios = recalcularEjercicios(
+          config,
+          series,
+          repeticiones,
+          intensidad,
+        );
+        next[semana.numeroSemana] = {
+          ...config,
+          ejercicios: nuevosEjercicios,
+          volumen: calcularVolumenTotal(nuevosEjercicios),
+        };
+        changed = true;
+      }
+    }
+    if (changed) {
+      setSemanasConfig(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="space-y-5">
@@ -701,8 +924,11 @@ export function PasoSemanas({
           const config = semanasConfig[semana.numeroSemana] ?? {
             tipoMicrociclo: "corriente" as TipoMicrociclo,
             frecuencia: 0,
+            series: 0,
+            repeticiones: 0,
             volumen: 0,
             intensidad: 0,
+            ejercicios: [],
           };
           const seleccionada = semanasSeleccionadas.includes(
             semana.numeroSemana,
@@ -733,7 +959,7 @@ export function PasoSemanas({
                   {toISODate(semana.fechaInicio)} - {toISODate(semana.fechaFin)}
                 </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <div className="block space-y-1">
                   <span className="text-xs text-text-secondary">Tipo</span>
                   <SearchableSelect
@@ -760,15 +986,33 @@ export function PasoSemanas({
                   />
                 </label>
                 <label className="block space-y-1">
-                  <span className="text-xs text-text-secondary">Volumen (kg)</span>
+                  <span className="text-xs text-text-secondary">Series</span>
                   <input
                     type="number"
                     min="0"
-                    step="0.1"
-                    value={config.volumen}
+                    step="1"
+                    value={config.series}
                     onWheel={(e) => e.currentTarget.blur()}
                     onChange={(e) =>
-                      updateSemana(semana.numeroSemana, "volumen", e.target.value)
+                      updateSemana(semana.numeroSemana, "series", e.target.value)
+                    }
+                    className="w-full rounded-xl border border-gray-200 bg-bg-soft px-3 py-2 text-sm text-text-primary outline-none dark:border-white/10 dark:bg-bg-main dark:text-white"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs text-text-secondary">Repeticiones</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={config.repeticiones}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    onChange={(e) =>
+                      updateSemana(
+                        semana.numeroSemana,
+                        "repeticiones",
+                        e.target.value,
+                      )
                     }
                     className="w-full rounded-xl border border-gray-200 bg-bg-soft px-3 py-2 text-sm text-text-primary outline-none dark:border-white/10 dark:bg-bg-main dark:text-white"
                   />
@@ -788,6 +1032,90 @@ export function PasoSemanas({
                     className="w-full rounded-xl border border-gray-200 bg-bg-soft px-3 py-2 text-sm text-text-primary outline-none dark:border-white/10 dark:bg-bg-main dark:text-white"
                   />
                 </label>
+              </div>
+              <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-bg-soft dark:border-white/10 dark:bg-bg-main">
+                {resultadosRm.length === 0 ? (
+                  <p className="px-4 py-3 text-xs text-text-tertiary">
+                    Selecciona una sesión RM para calcular el volumen.
+                  </p>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-bg-main dark:bg-bg-subtle">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-medium text-text-secondary">
+                              Ejercicio
+                            </th>
+                            <th className="px-3 py-2 text-left font-medium text-text-secondary">
+                              Fórmula RM
+                            </th>
+                            <th className="px-3 py-2 text-right font-medium text-text-secondary">
+                              RM (kg)
+                            </th>
+                            <th className="px-3 py-2 text-right font-medium text-text-secondary">
+                              Peso (kg)
+                            </th>
+                            <th className="px-3 py-2 text-right font-medium text-text-secondary">
+                              Volumen (kg)
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-white/8">
+                          {config.ejercicios.map((ejercicio) => {
+                            const resultado = resultadosRm.find(
+                              (r) => r.ejercicioId === ejercicio.ejercicioId,
+                            );
+                            return (
+                              <tr key={ejercicio.ejercicioId}>
+                                <td className="px-3 py-2 text-text-primary dark:text-white">
+                                  {resultado?.ejercicio.nombre ??
+                                    `Ejercicio ${ejercicio.ejercicioId}`}
+                                </td>
+                                <td className="px-3 py-2">
+                                  <select
+                                    value={ejercicio.formulaRm}
+                                    onChange={(e) =>
+                                      updateFormulaEjercicio(
+                                        semana.numeroSemana,
+                                        ejercicio.ejercicioId,
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="w-full rounded-lg border border-gray-200 bg-bg-main px-2 py-1 text-xs text-text-primary outline-none dark:border-white/10 dark:bg-bg-subtle dark:text-white"
+                                  >
+                                    {FORMULAS_RM.map((f) => (
+                                      <option key={f.value} value={f.value}>
+                                        {f.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="px-3 py-2 text-right text-text-secondary">
+                                  {formatNumber(ejercicio.rm)} kg
+                                </td>
+                                <td className="px-3 py-2 text-right text-text-secondary">
+                                  {formatNumber(ejercicio.peso)} kg
+                                </td>
+                                <td className="px-3 py-2 text-right font-medium text-text-primary dark:text-white">
+                                  {formatNumber(ejercicio.volumen)} kg
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="border-t border-gray-200 px-4 py-3 dark:border-white/8">
+                      <p className="text-xs text-text-secondary">
+                        Volumen total semanal
+                      </p>
+                      <p className="text-lg font-semibold text-text-primary dark:text-white">
+                        {formatNumber(Number(config.volumen || 0))} kg
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           );
@@ -999,6 +1327,8 @@ export function PasoRevision({
       numeroSemana: number;
       tipoMicrociclo: TipoMicrociclo;
       frecuencia: number;
+      series: number;
+      repeticiones: number;
       volumen: number;
       intensidad: number;
     }[];
@@ -1143,6 +1473,8 @@ export function PasoRevision({
                 <th className="py-1 pr-2 font-medium">#</th>
                 <th className="py-1 pr-2 font-medium">Tipo</th>
                 <th className="py-1 pr-2 font-medium">Frec.</th>
+                <th className="py-1 pr-2 font-medium">Series</th>
+                <th className="py-1 pr-2 font-medium">Reps</th>
                 <th className="py-1 pr-2 font-medium">Vol. (kg)</th>
                 <th className="py-1 font-medium">Int. (%)</th>
               </tr>
@@ -1165,7 +1497,13 @@ export function PasoRevision({
                     {semana.frecuencia}
                   </td>
                   <td className="py-1 pr-2 text-text-secondary">
-                    {semana.volumen}
+                    {semana.series}
+                  </td>
+                  <td className="py-1 pr-2 text-text-secondary">
+                    {semana.repeticiones}
+                  </td>
+                  <td className="py-1 pr-2 text-text-secondary">
+                    {formatNumber(semana.volumen)}
                   </td>
                   <td className="py-1 text-text-secondary">
                     {semana.intensidad}
