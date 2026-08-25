@@ -258,3 +258,63 @@ export async function updateMedidasBasicas(
     );
   }
 }
+
+export async function updateNivelOverride(
+  cc: string,
+  nivel: "beginner" | "intermediate" | "advanced" | null,
+): Promise<{ nivelOverride: string | null }> {
+  const normalizedCC = normalizeText(cc);
+
+  if (!normalizedCC) {
+    throw new Error("El CC es obligatorio.");
+  }
+
+  try {
+    return await prisma.persona.update({
+      where: { cc: normalizedCC },
+      data: { nivelOverride: nivel },
+      select: { nivelOverride: true },
+    });
+  } catch (error) {
+    const knownRequestError = mapKnownRequestError(error);
+    if (knownRequestError) {
+      throw knownRequestError;
+    }
+
+    throw new Error(
+      error instanceof Error
+        ? `No fue posible actualizar el nivel. ${error.message}`
+        : `No fue posible actualizar el nivel. ${String(error)}`,
+    );
+  }
+}
+
+export async function updateFaseEntrenamiento(
+  cc: string,
+  fase: "resistencia" | "fuerza" | "hipertrofia",
+): Promise<{ faseEntrenamiento: string | null; faseInicioAt: Date | null }> {
+  const normalizedCC = normalizeText(cc);
+
+  if (!normalizedCC) {
+    throw new Error("El CC es obligatorio.");
+  }
+
+  try {
+    return await prisma.persona.update({
+      where: { cc: normalizedCC },
+      data: { faseEntrenamiento: fase, faseInicioAt: new Date() },
+      select: { faseEntrenamiento: true, faseInicioAt: true },
+    });
+  } catch (error) {
+    const knownRequestError = mapKnownRequestError(error);
+    if (knownRequestError) {
+      throw knownRequestError;
+    }
+
+    throw new Error(
+      error instanceof Error
+        ? `No fue posible actualizar la fase de entrenamiento. ${error.message}`
+        : `No fue posible actualizar la fase de entrenamiento. ${String(error)}`,
+    );
+  }
+}

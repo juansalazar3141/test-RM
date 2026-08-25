@@ -1,11 +1,18 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 
 import { createPersona as createPersonaService } from "@/services/persona.service";
-import { updateMedidasBasicas } from "@/services/persona.service";
+import {
+  updateMedidasBasicas,
+  updateNivelOverride,
+  updateFaseEntrenamiento,
+} from "@/services/persona.service";
+import { isUserLevel } from "@/lib/user-level";
+import { isTrainingFase } from "@/lib/training";
 
 export type EntryState = {
   error: string | null;
@@ -265,4 +272,48 @@ export async function actualizarMedidasBasicasAction(
       talla: null,
     };
   }
+}
+
+export async function updateNivelOverrideAction(cc: string, nivel: string | null) {
+  const normalizedCC = normalizeCC(cc);
+
+  if (!normalizedCC) {
+    throw new Error("El CC es obligatorio.");
+  }
+
+  const parsedNivel = nivel !== null && isUserLevel(nivel) ? nivel : null;
+
+  await updateNivelOverride(normalizedCC, parsedNivel);
+
+  revalidatePath("/dashboard");
+  revalidatePath("/sesion/[id]", "page");
+}
+
+export async function avanzarAFuerzaAction(cc: string) {
+  const normalizedCC = normalizeCC(cc);
+
+  if (!normalizedCC) {
+    throw new Error("El CC es obligatorio.");
+  }
+
+  await updateFaseEntrenamiento(normalizedCC, "fuerza");
+
+  revalidatePath("/dashboard");
+}
+
+export async function updateFaseEntrenamientoAction(cc: string, fase: string) {
+  const normalizedCC = normalizeCC(cc);
+
+  if (!normalizedCC) {
+    throw new Error("El CC es obligatorio.");
+  }
+
+  if (!isTrainingFase(fase)) {
+    throw new Error("Fase de entrenamiento inválida.");
+  }
+
+  await updateFaseEntrenamiento(normalizedCC, fase);
+
+  revalidatePath("/dashboard");
+  revalidatePath("/sesion/[id]", "page");
 }

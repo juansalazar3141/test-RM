@@ -5,7 +5,10 @@ import { PrismaClient } from "@prisma/client";
 
 import { ICCSection } from "@/components/dashboard/ICCSection";
 import { IMCCard } from "@/components/dashboard/IMCCard";
+import { DashboardLevelCard } from "@/components/dashboard/DashboardLevelCard";
 import { DashboardSessionsSection } from "@/components/dashboard/DashboardSessionsSection";
+import { PhaseProgressionBanner } from "@/components/dashboard/PhaseProgressionBanner";
+import { RetestReminderBanner } from "@/components/dashboard/RetestReminderBanner";
 import { SummaryMetrics } from "@/components/dashboard/SummaryMetrics";
 import { FloatingActionButton } from "@/components/ui/FloatingActionButton";
 import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
@@ -19,6 +22,9 @@ import {
   obtenerMacrocicloAbierto,
   obtenerMacrociclosPorPersona,
 } from "@/services/macrociclo.service";
+import { getUserLevel, isUserLevel } from "@/lib/user-level";
+import { isTrainingFase } from "@/lib/training";
+import { getMaxFormulaRM } from "@/lib/rm";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -60,6 +66,10 @@ function formatDaysAgo(date: Date) {
   }
 
   return `hace ${days} dias`;
+}
+
+function daysSince(date: Date): number {
+  return Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 function formatChange(value: number) {
@@ -118,6 +128,11 @@ export default async function DashboardPage({
     resolvedSearchParams.deleted === "1" ||
     resolvedSearchParams.deleted === "true" ||
     resolvedSearchParams.deleted === "deleted";
+  const rawSesionId = resolvedSearchParams.sesionId;
+  const savedSesionId =
+    typeof rawSesionId === "string" && Number.isInteger(Number(rawSesionId))
+      ? Number(rawSesionId)
+      : undefined;
 
   if (!cc) {
     redirect("/");
@@ -134,6 +149,9 @@ export default async function DashboardPage({
       talla: true,
       cintura: true,
       cadera: true,
+      nivelOverride: true,
+      faseEntrenamiento: true,
+      faseInicioAt: true,
     },
   });
 
@@ -172,6 +190,37 @@ export default async function DashboardPage({
   const imc = calculateIMC(persona);
   const imcClassification = getIMCClassification(imc);
   const newSessionHref = `/nueva-sesion?cc=${encodeURIComponent(cc)}`;
+
+  const daysSinceLastSession = latestSession
+    ? daysSince(latestSession.createdAt)
+    : null;
+  const showRetestBanner =
+    daysSinceLastSession !== null && daysSinceLastSession >= 60;
+
+  const latestGlobalRM =
+    typeof latestSession?.finalRM === "number" && latestSession.finalRM > 0
+      ? latestSession.finalRM
+      : latestSession && latestSession.resultados.length > 0
+        ? Math.max(
+            ...latestSession.resultados.map((resultado) =>
+              getMaxFormulaRM(resultado),
+            ),
+          )
+        : 0;
+  const autoLevel = getUserLevel(latestGlobalRM, latestSession?.peso ?? null);
+  const nivelOverride = isUserLevel(persona.nivelOverride)
+    ? persona.nivelOverride
+    : null;
+
+  const faseEntrenamiento = isTrainingFase(persona.faseEntrenamiento)
+    ? persona.faseEntrenamiento
+    : null;
+  const daysSinceFaseInicio = persona.faseInicioAt
+    ? daysSince(persona.faseInicioAt)
+    : null;
+  const latestSesionHref = latestSession
+    ? `/sesion/${latestSession.id}?cc=${encodeURIComponent(cc)}`
+    : null;
   const macrocicloResumen = macrocicloAbierto
     ? macrocicloAbierto.objetivoTipo === "competencia"
       ? `Competencia: ${new Intl.DateTimeFormat("es-ES", {
@@ -220,10 +269,38 @@ export default async function DashboardPage({
         />
       </header>
 
+      {showRetestBanner && daysSinceLastSession !== null ? (
+        <RetestReminderBanner
+          daysSinceLastSession={daysSinceLastSession}
+          newSessionHref={newSessionHref}
+        />
+      ) : null}
+
+      <PhaseProgressionBanner
+        cc={cc}
+        faseEntrenamiento={faseEntrenamiento}
+        daysSinceFaseInicio={daysSinceFaseInicio}
+      />
+
+      <DashboardSessionsSection
+        sessions={sessionItems}
+        newSessionHref={newSessionHref}
+        cc={cc}
+        saved={saved}
+        deleted={deleted}
+        savedSesionId={savedSesionId}
+      />
+
+      <DashboardLevelCard
+        autoLevel={autoLevel}
+        nivelOverride={nivelOverride}
+        latestSesionHref={latestSesionHref}
+      />
+
       <section className="space-y-4 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
-            Nueva sesión de test de fuerza máxima (RM) 
+            Nueva sesión de test de fuerza máxima (RM)
           </h2>
           <p className="text-sm text-text-secondary">
             Determina tu fuerza máxima (RM) en diferentes ejercicios 
@@ -299,14 +376,6 @@ export default async function DashboardPage({
           </div>
         )}
       </section>
-
-      <DashboardSessionsSection
-        sessions={sessionItems}
-        newSessionHref={newSessionHref}
-        cc={cc}
-        saved={saved}
-        deleted={deleted}
-      />
 
       <IMCCard imc={imc} classification={imcClassification} />
 

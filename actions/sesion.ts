@@ -6,6 +6,7 @@ import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { Prisma, PrismaClient } from "@prisma/client";
 
 import { calculateRM, calculateRMForSession, roundToTwo } from "@/lib/rm";
+import { EXERCISES_WITHOUT_LOAD } from "@/lib/ejercicios-config";
 
 type RMMethod = "estimation" | "casas" | "nacleiro";
 
@@ -13,6 +14,7 @@ type ResultadoInput = {
   ejercicioId: number;
   repeticiones: number;
   carga: number;
+  pesoEquipo: number;
   casas: number;
   nacleiro: number;
 };
@@ -35,8 +37,6 @@ type CreateSesionResult = {
   success: true;
   sesionId: number;
 };
-
-const EXERCISES_WITHOUT_LOAD = new Set([4]);
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -128,7 +128,10 @@ function parseProtocolData(value: FormDataEntryValue | null) {
 }
 
 function getFormulaRM(input: ResultadoInput, sexo: string) {
-  const rm = calculateRM(input.carga, input.repeticiones, sexo);
+  const carga = EXERCISES_WITHOUT_LOAD.has(input.ejercicioId)
+    ? 0
+    : input.carga + input.pesoEquipo;
+  const rm = calculateRM(carga, input.repeticiones, sexo);
   return {
     ...rm,
     estimated: Math.max(rm.epley, rm.brzycki),
@@ -213,6 +216,9 @@ function parseCreateSesionInput(
         formData.get(`repeticiones_${ejercicioId}`),
       ),
       carga: parseNonNegativeNumber(formData.get(`carga_${ejercicioId}`)),
+      pesoEquipo: parseNonNegativeNumber(
+        formData.get(`pesoEquipo_${ejercicioId}`),
+      ),
       casas: parseNonNegativeNumber(formData.get(`casas_${ejercicioId}`)),
       nacleiro: parseNonNegativeNumber(formData.get(`nacleiro_${ejercicioId}`)),
     });
@@ -277,6 +283,7 @@ function sanitizeInputEjercicios(ejercicios: unknown): ResultadoInput[] {
 
     const rawRepeticiones = (item as { repeticiones?: unknown }).repeticiones;
     const rawCarga = (item as { carga?: unknown }).carga;
+    const rawPesoEquipo = (item as { pesoEquipo?: unknown }).pesoEquipo;
     const rawCasas = (item as { casas?: unknown }).casas;
     const rawNacleiro = (item as { nacleiro?: unknown }).nacleiro;
     const repeticionesNumber =
@@ -285,6 +292,8 @@ function sanitizeInputEjercicios(ejercicios: unknown): ResultadoInput[] {
         : Number(rawRepeticiones);
     const cargaNumber =
       typeof rawCarga === "number" ? rawCarga : Number(rawCarga);
+    const pesoEquipoNumber =
+      typeof rawPesoEquipo === "number" ? rawPesoEquipo : Number(rawPesoEquipo);
     const casasNumber =
       typeof rawCasas === "number" ? rawCasas : Number(rawCasas);
     const nacleiroNumber =
@@ -296,6 +305,9 @@ function sanitizeInputEjercicios(ejercicios: unknown): ResultadoInput[] {
         ? Math.max(0, Math.floor(repeticionesNumber))
         : 0,
       carga: Number.isFinite(cargaNumber) ? Math.max(0, cargaNumber) : 0,
+      pesoEquipo: Number.isFinite(pesoEquipoNumber)
+        ? Math.max(0, pesoEquipoNumber)
+        : 0,
       casas: Number.isFinite(casasNumber) ? Math.max(0, casasNumber) : 0,
       nacleiro: Number.isFinite(nacleiroNumber)
         ? Math.max(0, nacleiroNumber)
@@ -339,6 +351,7 @@ export async function createSesion(
           id: true,
           masaCorporal: true,
           sexo: true,
+          faseEntrenamiento: true,
         },
       });
 
@@ -372,17 +385,17 @@ export async function createSesion(
         .filter((item) => ejerciciosPermitidos.has(item.ejercicioId))
         .map((item) => {
           const fallback = fallbackByExercise.get(item.ejercicioId);
-          const carga = EXERCISES_WITHOUT_LOAD.has(item.ejercicioId)
-            ? 0
-            : item.carga > 0
-              ? item.carga
-              : fallback?.carga ?? 0;
+          const withoutLoad = EXERCISES_WITHOUT_LOAD.has(item.ejercicioId);
+          const pesoLevantado = item.carga > 0 ? item.carga : fallback?.carga ?? 0;
+          const pesoEquipo = withoutLoad ? 0 : item.pesoEquipo;
+          const carga = withoutLoad ? 0 : pesoLevantado + pesoEquipo;
           const formula = calculateRM(carga, item.repeticiones, persona.sexo);
 
           return {
             ejercicioId: item.ejercicioId,
             repeticiones: item.repeticiones,
             carga: roundToTwo(carga),
+            pesoEquipo: roundToTwo(pesoEquipo),
             epley: roundToTwo(formula.epley),
             brzycki: roundToTwo(formula.brzycki),
             lombardi: roundToTwo(formula.lombardi),
@@ -404,7 +417,13 @@ export async function createSesion(
 
       await tx.persona.update({
         where: { id: persona.id },
-        data: { masaCorporal: input.peso },
+        data: {
+          masaCorporal: input.peso,
+          nivelOverride: null,
+          ...(persona.faseEntrenamiento === null
+            ? { faseEntrenamiento: "resistencia", faseInicioAt: new Date() }
+            : {}),
+        },
       });
 
       const estimatedRM =
@@ -533,11 +552,13 @@ export async function createSesionAction(formData: FormData) {
     result?.sesionId
   ) {
     redirect(
-      `/macrociclo/${parsed.data.macrocicloId}/editar?cc=${encodeURIComponent(parsed.data.cc)}&paso=3`,
+      `/macrociclo/${parsed.data.macrocicloId}/editar?cc=${encodeURIComponent(parsed.data.cc)}&paso=2`,
     );
   }
 
-  redirect(`/dashboard?cc=${encodeURIComponent(parsed.data.cc)}&saved=1`);
+  redirect(
+    `/dashboard?cc=${encodeURIComponent(parsed.data.cc)}&saved=1&sesionId=${result.sesionId}`,
+  );
 }
 
 export async function deleteSesionAction(formData: FormData) {

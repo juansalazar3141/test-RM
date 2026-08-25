@@ -323,7 +323,7 @@ export async function guardarRmSnapshot({
     data: {
       sesionRmId,
       rmSnapshot: rmSnapshot as Prisma.InputJsonValue,
-      pasoActual: Math.max(pasoActual, 4),
+      pasoActual: Math.max(pasoActual, 3),
     },
   });
 
@@ -355,7 +355,7 @@ export async function guardarVo2maxSnapshot({
     where: { id, personaId },
     data: {
       vo2maxSnapshot: vo2max as Prisma.InputJsonValue,
-      pasoActual: Math.max(pasoActual, 5),
+      pasoActual: Math.max(pasoActual, 4),
     },
   });
 
@@ -548,7 +548,7 @@ export async function guardarPeriodizacion({
 
       await tx.macrociclo.update({
         where: { id },
-        data: { pasoActual: Math.max(pasoActual, 9) },
+        data: { pasoActual: Math.max(pasoActual, 8) },
       });
 
       await tx.macrocicloAuditLog.create({

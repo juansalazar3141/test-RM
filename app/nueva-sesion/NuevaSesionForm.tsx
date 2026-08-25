@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { startNuevaSesionTour, hasSeenTour } from "@/lib/onboarding";
 import { getPorcentajeMasa } from "@/helpers/calculations";
+import { EXERCISES_WITHOUT_LOAD, EXERCISE_NOTES } from "@/lib/ejercicios-config";
 import { getAvailableRMMethods } from "@/lib/training-flow";
 import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import { Section } from "@/components/ui/Section";
@@ -31,8 +32,6 @@ type Persona = {
 };
 
 type RMMethod = "estimation" | "casas" | "nacleiro";
-
-const EXERCISES_WITHOUT_LOAD = new Set([4]);
 
 interface Props {
   cc: string;
@@ -302,6 +301,11 @@ export function NuevaSesionForm({
                               ? "Repeticiones en 1 minuto"
                               : `Sugerido: ${formatWeight(getCargaBase(ejercicio))} kg`}
                           </p>
+                          {EXERCISE_NOTES[ejercicio.id] ? (
+                            <p className="mt-1 text-xs text-text-secondary">
+                              {EXERCISE_NOTES[ejercicio.id]}
+                            </p>
+                          ) : null}
                         </div>
                         {withoutLoad ? (
                           <input
@@ -310,21 +314,36 @@ export function NuevaSesionForm({
                             value="0"
                           />
                         ) : (
-                          <label>
-                            <span className="text-sm font-medium text-text-primary dark:text-white">
-                              Peso levantado
-                            </span>
-                            <input
-                              name={`carga_${ejercicio.id}`}
-                              type="number"
-                              min="0"
-                              step="0.5"
-                              defaultValue={formatWeight(
-                                getCargaBase(ejercicio),
-                              )}
-                              className="mt-2 w-full rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 text-right text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-main dark:text-white"
-                            />
-                          </label>
+                          <div className="space-y-2">
+                            <label>
+                              <span className="text-sm font-medium text-text-primary dark:text-white">
+                                Peso levantado
+                              </span>
+                              <input
+                                name={`carga_${ejercicio.id}`}
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                defaultValue={formatWeight(
+                                  getCargaBase(ejercicio),
+                                )}
+                                className="mt-2 w-full rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 text-right text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-main dark:text-white"
+                              />
+                            </label>
+                            <label>
+                              <span className="text-sm font-medium text-text-primary dark:text-white">
+                                Peso de barra/equipo (kg)
+                              </span>
+                              <input
+                                name={`pesoEquipo_${ejercicio.id}`}
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                defaultValue="0"
+                                className="mt-2 w-full rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 text-right text-text-primary outline-none transition focus:border-accent dark:border-white/10 dark:bg-bg-main dark:text-white"
+                              />
+                            </label>
+                          </div>
                         )}
                         <label>
                           <span className="text-sm font-medium text-text-primary dark:text-white">

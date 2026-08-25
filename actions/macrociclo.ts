@@ -197,7 +197,7 @@ export async function guardarRmAction(formData: FormData) {
     },
   });
 
-  if (!sesion) redirectToWizard(cc, id, 3);
+  if (!sesion) redirectToWizard(cc, id, 2);
 
   const rmSnapshot = {
     sesionId: sesion.id,
@@ -238,7 +238,7 @@ export async function guardarRmAction(formData: FormData) {
     context: getContext(),
   });
 
-  redirectToWizard(cc, id, 4);
+  redirectToWizard(cc, id, 3);
 }
 
 export async function guardarVo2maxAction(formData: FormData) {
@@ -255,18 +255,14 @@ export async function guardarVo2maxAction(formData: FormData) {
 
   if (metodo === "cooper") {
     const distancia = getNumber(formData, "distanciaMetros");
-    if (!distancia || distancia <= 0) redirectToWizard(cc, id, 4);
+    if (!distancia || distancia <= 0) redirectToWizard(cc, id, 3);
     const valor = (distancia - 504.9) / 44.73;
     vo2max = { metodo, distanciaMetros: distancia, valor };
-  } else if (metodo === "directo") {
-    const valor = getNumber(formData, "valor");
-    if (!valor || valor <= 0) redirectToWizard(cc, id, 4);
-    vo2max = { metodo, valor };
   } else {
     const etapa = getNumber(formData, "etapa");
 
     if (!etapa || etapa < 1 || !Number.isInteger(etapa)) {
-      redirectToWizard(cc, id, 4);
+      redirectToWizard(cc, id, 3);
     }
 
     const etapaFinal = etapa as number;
@@ -291,7 +287,24 @@ export async function guardarVo2maxAction(formData: FormData) {
     context: getContext(),
   });
 
-  redirectToWizard(cc, id, 5);
+  redirectToWizard(cc, id, 4);
+}
+
+export async function omitirVo2maxAction(formData: FormData) {
+  const cc = getString(formData, "cc");
+  const id = getInt(formData, "id");
+
+  if (!cc || !id) redirect("/");
+
+  const persona = await getPersona(cc);
+  if (!persona) redirect("/");
+
+  const macrociclo = await prisma.macrociclo.findUnique({
+    where: { id, personaId: persona.id },
+  });
+  if (!macrociclo) redirect("/");
+
+  redirectToWizard(cc, id, 4);
 }
 
 type PeriodizacionPayload = {
@@ -407,11 +420,11 @@ export async function guardarPeriodizacionAction(formData: FormData) {
     const id = getInt(formData, "id");
     if (!cc || !id) redirect("/");
     redirect(
-      `/macrociclo/${id}/editar?cc=${encodeURIComponent(cc)}&paso=10&error=${encodeURIComponent(result.error)}`,
+      `/macrociclo/${id}/editar?cc=${encodeURIComponent(cc)}&paso=9&error=${encodeURIComponent(result.error)}`,
     );
   }
 
-  redirectToWizard(result.cc, result.id, 9);
+  redirectToWizard(result.cc, result.id, 8);
 }
 
 export async function guardarPeriodizacionSinRedirectAction(

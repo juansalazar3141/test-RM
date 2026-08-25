@@ -17,6 +17,9 @@ model Persona {
   edad         Int
   talla        Float
   entrenado    Boolean
+  nivelOverride       String?
+  faseEntrenamiento   String?
+  faseInicioAt        DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -64,6 +67,7 @@ model ResultadoEjercicio {
   ejercicioId  Int
   repeticiones Int
   carga        Float
+  pesoEquipo   Float @default(0)
 
   epley    Float
   brzycki  Float

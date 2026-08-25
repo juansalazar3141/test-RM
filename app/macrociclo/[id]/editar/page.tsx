@@ -63,7 +63,7 @@ export default async function EditarMacrocicloPage({
     },
   });
 
-  const pasoInicial = pasoQuery && pasoQuery >= 1 && pasoQuery <= 10
+  const pasoInicial = pasoQuery && pasoQuery >= 1 && pasoQuery <= 9
     ? pasoQuery
     : macrociclo.pasoActual;
 

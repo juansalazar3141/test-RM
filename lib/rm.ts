@@ -348,6 +348,19 @@ export function calculateRMForSession(
   });
 }
 
+export function getMaxFormulaRM(result: RMResult): number {
+  return Math.max(
+    result.epley,
+    result.brzycki,
+    result.lombardi,
+    result.lander,
+    result.oconnor,
+    result.mayhew,
+    result.wathen,
+    result.baechle,
+  );
+}
+
 // Backward-compatible aliases for existing imports.
 export const epley = calculateEpley;
 export const brzycki = calculateBrzycki;
