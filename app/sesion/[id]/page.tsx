@@ -9,7 +9,7 @@ import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
 import { getStrengthLevel } from "@/helpers/calculations";
-import { EXERCISES_WITHOUT_LOAD, EXERCISE_NOTES } from "@/lib/ejercicios-config";
+import { EXERCISE_NOTES } from "@/lib/ejercicios-config";
 import type { TrainingFase } from "@/lib/training";
 import {
   calculateRepetitionValue,
@@ -148,6 +148,7 @@ export default async function SesionDetailPage({
           ejercicio: {
             select: {
               nombre: true,
+              esDeTiempo: true,
             },
           },
         },
@@ -165,14 +166,13 @@ export default async function SesionDetailPage({
   const dashboardHref = cc
     ? `/dashboard?cc=${encodeURIComponent(cc)}`
     : "/dashboard";
+  // D-01/TASK-024: ya no se deriva un RM global tomando el máximo entre
+  // ejercicios distintos. sesion.finalRM solo queda poblado cuando es
+  // inequívoco (un único ejercicio evaluado, o un protocolo Casas/Nacleiro).
   const globalRM =
     typeof sesion.finalRM === "number" && sesion.finalRM > 0
       ? sesion.finalRM
-      : sesion.resultados.length > 0
-        ? Math.max(
-            ...sesion.resultados.map((resultado) => getMaxFormulaRM(resultado)),
-          )
-        : 0;
+      : 0;
   const autoLevel = getUserLevel(globalRM, sesion.peso);
   const nivelOverride = isUserLevel(sesion.persona.nivelOverride)
     ? sesion.persona.nivelOverride
@@ -217,7 +217,7 @@ export default async function SesionDetailPage({
           {sesion.resultados.length > 0 ? (
             <MetricRow
               label="Indice de fuerza"
-              value={`${strengthIndex.total} · ${strengthIndex.label}`}
+              value={`${strengthIndex.total}% · ${strengthIndex.label}`}
               tone="positive"
               compact
             />
@@ -301,11 +301,14 @@ export default async function SesionDetailPage({
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {sesion.resultados.map((resultado) => {
-              const estimatedRM = getMaxFormulaRM(resultado);
+              // D-02/TASK-024: la estimación principal es la fórmula
+              // primaria (Epley) con su banda, no el máximo entre las 8
+              // fórmulas. rm1Estimado puede faltar en filas históricas
+              // previas al backfill (C-03); en ese caso se conserva el
+              // valor anterior como referencia.
+              const estimatedRM = resultado.rm1Estimado ?? getMaxFormulaRM(resultado);
               const formulaRows = getFormulaRows(resultado);
-              const withoutLoad = EXERCISES_WITHOUT_LOAD.has(
-                resultado.ejercicioId,
-              );
+              const withoutLoad = resultado.ejercicio.esDeTiempo;
               const repetitionValue = calculateRepetitionValue(
                 resultado.repeticiones,
                 resultado.ejercicioId,
@@ -373,6 +376,32 @@ export default async function SesionDetailPage({
                         tone="positive"
                         compact
                       />
+                      {resultado.rmMin !== null && resultado.rmMax !== null ? (
+                        <MetricRow
+                          label="Banda de incertidumbre"
+                          value={`${formatNumber(resultado.rmMin)} – ${formatNumber(resultado.rmMax)} kg`}
+                          compact
+                        />
+                      ) : null}
+                      {resultado.confianza ? (
+                        <MetricRow
+                          label="Confianza"
+                          value={
+                            resultado.confianza === "alta"
+                              ? "Alta"
+                              : resultado.confianza === "media"
+                                ? "Media"
+                                : "Baja"
+                          }
+                          compact
+                        />
+                      ) : null}
+                      {resultado.fueraDeRango ? (
+                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                          Repeticiones fuera de la ventana válida (3–10): esta
+                          estimación tiene menor certeza.
+                        </p>
+                      ) : null}
                       {resultado.casas > 0 ? (
                         <MetricRow
                           label="Protocolo Casas"
@@ -424,7 +453,7 @@ export default async function SesionDetailPage({
       <div className="space-y-4">
         <PrimaryButton href={dashboardHref}>Volver a mi panel</PrimaryButton>
         <PrimaryButton
-          href="/"
+          href="/atletas"
           className="bg-bg-main text-text-secondary dark:bg-bg-main dark:text-text-secondary"
         >
           Cambiar usuario

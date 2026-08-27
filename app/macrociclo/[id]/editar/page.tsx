@@ -21,7 +21,7 @@ export default async function EditarMacrocicloPage({
   const pasoQuery = typeof rawPaso === "string" ? Number(rawPaso) : null;
 
   if (!cc || !Number.isInteger(id) || id <= 0) {
-    redirect("/");
+    redirect("/atletas");
   }
 
   const persona = await prisma.persona.findUnique({
@@ -38,7 +38,7 @@ export default async function EditarMacrocicloPage({
   });
 
   if (!persona) {
-    redirect("/");
+    redirect("/atletas");
   }
 
   const macrociclo = await obtenerMacrocicloPorId(id);

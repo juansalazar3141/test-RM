@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { startNuevaSesionTour, hasSeenTour } from "@/lib/onboarding";
 import { getPorcentajeMasa } from "@/helpers/calculations";
-import { EXERCISES_WITHOUT_LOAD, EXERCISE_NOTES } from "@/lib/ejercicios-config";
+import { EXERCISE_NOTES } from "@/lib/ejercicios-config";
 import { getAvailableRMMethods } from "@/lib/training-flow";
 import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import { Section } from "@/components/ui/Section";
@@ -23,6 +23,7 @@ type Ejercicio = {
   nombre: string;
   porcentajeMasaHombre: number;
   porcentajeMasaMujer: number;
+  esDeTiempo: boolean;
 };
 
 type Persona = {
@@ -58,6 +59,7 @@ export function NuevaSesionForm({
   const [trainingMonthsInput, setTrainingMonthsInput] = useState("");
   const [trainingMonths, setTrainingMonths] = useState<number | null>(null);
   const [rmMethod, setRMMethod] = useState<RMMethod>("estimation");
+  const [protocolFinalRM, setProtocolFinalRM] = useState(0);
 
   const availableRMMethods = useMemo(
     () =>
@@ -199,7 +201,8 @@ export function NuevaSesionForm({
             </label>
             {!canUseAdvancedMethods ? (
               <div className="rounded-2xl border border-gray-200 bg-bg-soft px-4 py-3 text-sm text-text-secondary dark:border-white/10">
-                Realiza la mayor cantidad de repeticiones con el peso sugerido por la aplicación para cada ejercicio.ñ
+                Realiza la mayor cantidad de repeticiones con el peso sugerido
+                por la aplicación para cada ejercicio.
               </div>
             ) : null}
           </Section>
@@ -244,19 +247,28 @@ export function NuevaSesionForm({
                       checked={rmMethod === "estimation"}
                       label="Estimación"
                       description="Calcula tu fuerza de forma segura sin esfuerzo máximo"
-                      onSelect={() => setRMMethod("estimation")}
+                      onSelect={() => {
+                        setRMMethod("estimation");
+                        setProtocolFinalRM(0);
+                      }}
                     />
                     <RMMethodOption
                       checked={rmMethod === "casas"}
                       label="Protocolo Casas"
                       description="Te guía paso a paso para encontrar tu peso máximo"
-                      onSelect={() => setRMMethod("casas")}
+                      onSelect={() => {
+                        setRMMethod("casas");
+                        setProtocolFinalRM(0);
+                      }}
                     />
                     <RMMethodOption
                       checked={rmMethod === "nacleiro"}
                       label="Test Nacleiro"
                       description="Test progresivo para usuarios con experiencia"
-                      onSelect={() => setRMMethod("nacleiro")}
+                      onSelect={() => {
+                        setRMMethod("nacleiro");
+                        setProtocolFinalRM(0);
+                      }}
                     />
                   </div>
                 </fieldset>
@@ -278,9 +290,7 @@ export function NuevaSesionForm({
                 </p>
                 <div className="divide-y divide-gray-200 dark:divide-white/6">
                   {ejercicios.map((ejercicio) => {
-                    const withoutLoad = EXERCISES_WITHOUT_LOAD.has(
-                      ejercicio.id,
-                    );
+                    const withoutLoad = ejercicio.esDeTiempo;
 
                     return (
                       <div
@@ -374,7 +384,10 @@ export function NuevaSesionForm({
 
           {rmMethod === "casas" && canUseAdvancedMethods ? (
             <Section title="Protocolo Casas">
-              <CasasProtocol formatWeight={formatWeight} />
+              <CasasProtocol
+                formatWeight={formatWeight}
+                onFinalRMChange={setProtocolFinalRM}
+              />
             </Section>
           ) : null}
 
@@ -383,6 +396,7 @@ export function NuevaSesionForm({
               <NacleiroTable
                 bodyWeight={typeof pesoActual === "number" ? pesoActual : 0}
                 formatWeight={formatWeight}
+                onFinalRMChange={setProtocolFinalRM}
               />
             </Section>
           ) : null}
@@ -398,7 +412,13 @@ export function NuevaSesionForm({
               </p>
             </div>
             <div className="session-save-button">
-              <FormSubmitButton pendingLabel="Guardando sesión...">
+              <FormSubmitButton
+                pendingLabel="Guardando sesión..."
+                disabled={
+                  (rmMethod === "casas" || rmMethod === "nacleiro") &&
+                  protocolFinalRM <= 0
+                }
+              >
                 Guardar sesión
               </FormSubmitButton>
             </div>

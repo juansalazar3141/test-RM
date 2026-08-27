@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -675,6 +675,16 @@ export function PasoSemanas({
   onContinuar: () => void;
 }) {
   const router = useRouter();
+  const [isRefreshPending, startRefreshTransition] = useTransition();
+  const [avanzarAlRefrescar, setAvanzarAlRefrescar] = useState(false);
+
+  useEffect(() => {
+    if (avanzarAlRefrescar && !isRefreshPending) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAvanzarAlRefrescar(false);
+      onContinuar();
+    }
+  }, [avanzarAlRefrescar, isRefreshPending, onContinuar]);
 
   function esAbdominal(nombre: string): boolean {
     return /abdominal/i.test(nombre);
@@ -1160,8 +1170,10 @@ export function PasoSemanas({
         action={async (formData) => {
           const result = await guardarPeriodizacionSinRedirectAction(formData);
           if (result.success) {
-            router.refresh();
-            onContinuar();
+            setAvanzarAlRefrescar(true);
+            startRefreshTransition(() => {
+              router.refresh();
+            });
           } else {
             alert(result.error);
           }

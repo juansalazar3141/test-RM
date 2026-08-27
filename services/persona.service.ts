@@ -1,6 +1,6 @@
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
+import { prisma } from "@/lib/prisma";
 import {
   normalizeCircumferenceToCentimeters,
   normalizeHeightToMeters,
@@ -40,25 +40,6 @@ export type NormalizedPersonaInput = {
   talla: number;
   entrenado: boolean;
 };
-
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-
-function createPrismaClient() {
-  const databaseUrl = process.env.DATABASE_URL;
-
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is not configured");
-  }
-
-  const adapter = new PrismaMariaDb(databaseUrl);
-  return new PrismaClient({ adapter });
-}
-
-const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
 
 function normalizeText(value: string): string {
   return value.trim();
@@ -289,21 +270,78 @@ export async function updateNivelOverride(
   }
 }
 
-export async function updateFaseEntrenamiento(
+// TASK-051/D-14: updateFaseEntrenamiento se retiró junto con sus dos únicos
+// llamadores (avanzarAFuerzaAction, updateFaseEntrenamientoAction en
+// actions/persona.ts) — era el sistema de progresión paralelo al mesociclo
+// activo. Ver docs/DECISIONES.md.
+
+export type DisponibilidadInput = {
+  mesesEntrenamiento: number;
+  diasDisponibles: number;
+  minutosPorSesion: number;
+  equipamiento: string[];
+  limitaciones?: string | null;
+};
+
+export type DisponibilidadResult = {
+  mesesEntrenamiento: number;
+  diasDisponibles: number;
+  minutosPorSesion: number;
+  equipamiento: Prisma.JsonValue;
+  limitaciones: string | null;
+};
+
+/**
+ * C-12/TASK-025: disponibilidad y contexto del atleta — lo que el motor de
+ * planificación (M5) necesita como input, además del RM vigente.
+ */
+export async function updateDisponibilidad(
   cc: string,
-  fase: "resistencia" | "fuerza" | "hipertrofia",
-): Promise<{ faseEntrenamiento: string | null; faseInicioAt: Date | null }> {
+  data: DisponibilidadInput,
+): Promise<DisponibilidadResult> {
   const normalizedCC = normalizeText(cc);
 
   if (!normalizedCC) {
     throw new Error("El CC es obligatorio.");
   }
 
+  if (!Number.isInteger(data.mesesEntrenamiento) || data.mesesEntrenamiento < 0) {
+    throw new Error("Los meses de entrenamiento deben ser un entero >= 0.");
+  }
+
+  if (
+    !Number.isInteger(data.diasDisponibles) ||
+    data.diasDisponibles < 1 ||
+    data.diasDisponibles > 7
+  ) {
+    throw new Error("Los días disponibles por semana deben estar entre 1 y 7.");
+  }
+
+  if (
+    !Number.isInteger(data.minutosPorSesion) ||
+    data.minutosPorSesion < 20 ||
+    data.minutosPorSesion > 240
+  ) {
+    throw new Error("Los minutos por sesión deben estar entre 20 y 240.");
+  }
+
   try {
     return await prisma.persona.update({
       where: { cc: normalizedCC },
-      data: { faseEntrenamiento: fase, faseInicioAt: new Date() },
-      select: { faseEntrenamiento: true, faseInicioAt: true },
+      data: {
+        mesesEntrenamiento: data.mesesEntrenamiento,
+        diasDisponibles: data.diasDisponibles,
+        minutosPorSesion: data.minutosPorSesion,
+        equipamiento: data.equipamiento as Prisma.InputJsonValue,
+        limitaciones: data.limitaciones?.trim() || null,
+      },
+      select: {
+        mesesEntrenamiento: true,
+        diasDisponibles: true,
+        minutosPorSesion: true,
+        equipamiento: true,
+        limitaciones: true,
+      },
     });
   } catch (error) {
     const knownRequestError = mapKnownRequestError(error);
@@ -313,8 +351,8 @@ export async function updateFaseEntrenamiento(
 
     throw new Error(
       error instanceof Error
-        ? `No fue posible actualizar la fase de entrenamiento. ${error.message}`
-        : `No fue posible actualizar la fase de entrenamiento. ${String(error)}`,
+        ? `No fue posible actualizar la disponibilidad. ${error.message}`
+        : `No fue posible actualizar la disponibilidad. ${String(error)}`,
     );
   }
 }

@@ -2,11 +2,12 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
+import { prisma } from "@/lib/prisma";
 import { calculateRM, calculateRMForSession, roundToTwo } from "@/lib/rm";
-import { EXERCISES_WITHOUT_LOAD } from "@/lib/ejercicios-config";
+import { estimarRm } from "@/lib/rm/estimacion";
+import { actualizarRmVigente } from "@/services/rm.service";
 
 type RMMethod = "estimation" | "casas" | "nacleiro";
 
@@ -37,24 +38,6 @@ type CreateSesionResult = {
   success: true;
   sesionId: number;
 };
-
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-
-function createPrismaClient() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is not configured");
-  }
-
-  const adapter = new PrismaMariaDb(databaseUrl);
-  return new PrismaClient({ adapter });
-}
-
-const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
 
 function normalizeCC(value: string) {
   return value.trim();
@@ -127,27 +110,22 @@ function parseProtocolData(value: FormDataEntryValue | null) {
   }
 }
 
-function getFormulaRM(input: ResultadoInput, sexo: string) {
-  const carga = EXERCISES_WITHOUT_LOAD.has(input.ejercicioId)
+function getFormulaRM(
+  input: ResultadoInput,
+  sexo: string,
+  ejerciciosSinCarga: ReadonlySet<number>,
+) {
+  const carga = ejerciciosSinCarga.has(input.ejercicioId)
     ? 0
     : input.carga + input.pesoEquipo;
   const rm = calculateRM(carga, input.repeticiones, sexo);
   return {
     ...rm,
-    estimated: Math.max(rm.epley, rm.brzycki),
+    // D-02: la estimación puntual es la fórmula primaria (Epley), nunca el
+    // máximo entre fórmulas — max() sesga sistemáticamente al alza.
+    // Ver lib/rm/estimacion.ts y ADR-01/ADR-02 en docs/DECISIONES.md.
+    estimated: rm.epley,
   };
-}
-
-function getFinalRM(input: ResultadoInput, rmMethod: RMMethod, sexo: string) {
-  if (rmMethod === "casas" && input.casas > 0) {
-    return input.casas;
-  }
-
-  if (rmMethod === "nacleiro" && input.nacleiro > 0) {
-    return input.nacleiro;
-  }
-
-  return getFormulaRM(input, sexo).estimated;
 }
 
 function parseCreateSesionInput(
@@ -364,8 +342,12 @@ export async function createSesion(
           id: true,
           porcentajeMasaHombre: true,
           porcentajeMasaMujer: true,
+          esDeTiempo: true,
         },
       });
+      const ejerciciosSinCarga = new Set(
+        ejerciciosDB.filter((e) => e.esDeTiempo).map((e) => e.id),
+      );
 
       const fallbackResults = calculateRMForSession(
         input.peso,
@@ -385,11 +367,17 @@ export async function createSesion(
         .filter((item) => ejerciciosPermitidos.has(item.ejercicioId))
         .map((item) => {
           const fallback = fallbackByExercise.get(item.ejercicioId);
-          const withoutLoad = EXERCISES_WITHOUT_LOAD.has(item.ejercicioId);
+          const withoutLoad = ejerciciosSinCarga.has(item.ejercicioId);
           const pesoLevantado = item.carga > 0 ? item.carga : fallback?.carga ?? 0;
           const pesoEquipo = withoutLoad ? 0 : item.pesoEquipo;
           const carga = withoutLoad ? 0 : pesoLevantado + pesoEquipo;
           const formula = calculateRM(carga, item.repeticiones, persona.sexo);
+          // C-03/M4: estimador único con banda e incertidumbre, guardado
+          // junto a las 8 fórmulas de referencia. withoutLoad (esDeTiempo)
+          // no produce un RM utilizable (D-17/esDeTiempo).
+          const estimacion = withoutLoad
+            ? null
+            : estimarRm(carga, item.repeticiones, { sexo: persona.sexo });
 
           return {
             ejercicioId: item.ejercicioId,
@@ -406,6 +394,12 @@ export async function createSesion(
             baechle: roundToTwo(formula.baechle),
             casas: roundToTwo(rmMethod === "casas" ? item.casas : 0),
             nacleiro: roundToTwo(rmMethod === "nacleiro" ? item.nacleiro : 0),
+            rm1Estimado: estimacion ? roundToTwo(estimacion.valor) : null,
+            rmMin: estimacion ? roundToTwo(estimacion.min) : null,
+            rmMax: estimacion ? roundToTwo(estimacion.max) : null,
+            confianza: estimacion?.confianza ?? null,
+            formulaPrimaria: estimacion ? "epley" : null,
+            fueraDeRango: estimacion?.fueraDeRango ?? false,
           };
         });
 
@@ -419,31 +413,35 @@ export async function createSesion(
         where: { id: persona.id },
         data: {
           masaCorporal: input.peso,
-          nivelOverride: null,
+          // D-15: guardar una sesión no debe borrar en silencio el
+          // nivelOverride que el entrenador fijó a mano.
           ...(persona.faseEntrenamiento === null
             ? { faseEntrenamiento: "resistencia", faseInicioAt: new Date() }
             : {}),
         },
       });
 
-      const estimatedRM =
-        sanitizedEjercicios.length > 0
-          ? Math.max(
-              ...sanitizedEjercicios.map(
-                (item) => getFormulaRM(item, persona.sexo).estimated,
-              ),
-            )
-          : input.estimatedRM;
-      const finalRM =
-        sanitizedEjercicios.length > 0
-          ? Math.max(
-              ...sanitizedEjercicios.map((item) =>
-                getFinalRM(item, rmMethod, persona.sexo),
-              ),
-            )
-          : input.finalRM;
+      // D-01: Sesion.estimatedRM/finalRM ya no se calculan como el máximo
+      // entre ejercicios distintos (ese escalar no tiene sentido físico: la
+      // prensa de pierna dominaría siempre sobre press banca). El RM de cada
+      // ejercicio ya vive en su propio ResultadoEjercicio. Solo se persiste
+      // un valor a nivel de sesión cuando es inequívoco: un único ejercicio
+      // evaluado, o un protocolo Casas/Nacleiro sobre un ejercicio de
+      // referencia (sanitizedEjercicios vacío en ese caso).
+      const primerEjercicio =
+        sanitizedEjercicios.length === 1 ? sanitizedEjercicios[0] : null;
+      const estimatedRM = primerEjercicio
+        ? getFormulaRM(primerEjercicio, persona.sexo, ejerciciosSinCarga).estimated
+        : sanitizedEjercicios.length === 0
+          ? input.estimatedRM
+          : 0;
+      const finalRM = primerEjercicio
+        ? getFormulaRM(primerEjercicio, persona.sexo, ejerciciosSinCarga).estimated
+        : sanitizedEjercicios.length === 0
+          ? input.finalRM
+          : 0;
 
-      return tx.sesion.create({
+      const creada = await tx.sesion.create({
         data: {
           personaId: persona.id,
           peso: input.peso,
@@ -460,8 +458,44 @@ export async function createSesion(
         },
         select: {
           id: true,
+          createdAt: true,
+          resultados: {
+            select: {
+              id: true,
+              ejercicioId: true,
+              rm1Estimado: true,
+              confianza: true,
+              fueraDeRango: true,
+            },
+          },
         },
       });
+
+      // M4/TASK-022: cada resultado con una estimación utilizable pasa a
+      // ser el RM vigente de ese ejercicio (D-01: nunca uno global). Un
+      // resultado fuera de rango no reemplaza el vigente (D-04/AC-06).
+      for (const resultado of creada.resultados) {
+        if (
+          resultado.rm1Estimado === null ||
+          resultado.rm1Estimado <= 0 ||
+          resultado.fueraDeRango ||
+          !(resultado.confianza === "alta" || resultado.confianza === "media" || resultado.confianza === "baja")
+        ) {
+          continue;
+        }
+
+        await actualizarRmVigente(tx, {
+          personaId: persona.id,
+          ejercicioId: resultado.ejercicioId,
+          valorKg: resultado.rm1Estimado,
+          origen: "estimacion",
+          confianza: resultado.confianza,
+          resultadoRmId: resultado.id,
+          fecha: creada.createdAt,
+        });
+      }
+
+      return { id: creada.id };
     });
 
     return {
@@ -568,7 +602,7 @@ export async function deleteSesionAction(formData: FormData) {
   const cc = typeof rawCC === "string" ? normalizeCC(rawCC) : "";
 
   if (!cc) {
-    redirect("/");
+    redirect("/atletas");
   }
 
   if (!Number.isInteger(sesionId) || sesionId <= 0) {
