@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   MESES_POR_ETAPA_LABEL,
@@ -16,8 +17,15 @@ import {
   type TipoMesociclo,
   type Vo2maxSnapshot,
 } from "@/lib/macrociclo";
-import { obtenerMacrocicloPorId } from "@/services/macrociclo.service";
+import { getVO2MaxClassification } from "@/helpers/calculations";
+import {
+  obtenerMacrocicloPorId,
+  obtenerProximaSesionPlanificada,
+  obtenerResumenMacrociclo,
+} from "@/services/macrociclo.service";
 import { cerrarMacrocicloAction, eliminarMacrocicloAction } from "@/actions/macrociclo";
+import { ResumenMacrociclo } from "@/components/macrociclo/ResumenMacrociclo";
+import InfoTooltip from "@/components/ui/InfoTooltip";
 
 const MEDIDA_GRUPOS = [
   { path: "medidasBasicas", label: "Medidas básicas" },
@@ -28,11 +36,11 @@ const MEDIDA_GRUPOS = [
   { path: "adiposidad", label: "Adiposidad" },
   {
     path: "distribucionAdiposoMuscular.masaGrasa",
-    label: "Masa grasa — distribución",
+    label: "Masa grasa: distribución",
   },
   {
     path: "distribucionAdiposoMuscular.tejidoMuscular",
-    label: "Tejido muscular — distribución",
+    label: "Tejido muscular: distribución",
   },
   { path: "indicesSalud", label: "Índices de salud" },
 ];
@@ -123,14 +131,18 @@ function formatNumber(value: number) {
   }).format(value);
 }
 
-function getVo2maxInfo(vo2max: Vo2maxSnapshot | null) {
+function getVo2maxInfo(
+  vo2max: Vo2maxSnapshot | null,
+  edad?: number | null,
+  sexo?: string | null,
+) {
   if (!vo2max) return null;
   const metodoLabel =
     vo2max.metodo === "leger"
       ? "Léger"
       : vo2max.metodo === "cooper"
         ? "Cooper"
-        : "Directo";
+        : "Valor directo";
   const detalles: string[] = [];
   if (vo2max.metodo === "cooper") {
     detalles.push(`Distancia: ${formatNumber(vo2max.distanciaMetros)} m`);
@@ -140,9 +152,13 @@ function getVo2maxInfo(vo2max: Vo2maxSnapshot | null) {
       `Etapa ${vo2max.etapa} · ${formatNumber(vo2max.velocidadKmh)} km/h`,
     );
   }
+  if (vo2max.fueraDeRango) {
+    detalles.push("Fuera del rango fisiológico habitual: verificar el dato.");
+  }
   return {
     metodoLabel,
     valor: `${formatNumber(vo2max.valor)} ml/kg/min`,
+    clasificacion: getVO2MaxClassification(vo2max.valor, edad, sexo),
     detalles,
   };
 }
@@ -165,12 +181,20 @@ export default async function MacrocicloDetallePage({
     redirect("/atletas");
   }
 
+  const authUser = await getAuthUserFromCookies();
   const persona = await prisma.persona.findUnique({
     where: { cc },
-    select: { id: true, nombre: true, cc: true },
+    select: {
+      id: true,
+      nombre: true,
+      cc: true,
+      edad: true,
+      sexo: true,
+      entrenadorId: true,
+    },
   });
 
-  if (!persona) {
+  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
     redirect("/atletas");
   }
 
@@ -182,22 +206,37 @@ export default async function MacrocicloDetallePage({
 
   const puedeEditar = macrociclo.estado === "borrador";
   const puedeCerrar = macrociclo.estado === "activo" || macrociclo.estado === "borrador";
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const semanaActualId =
+    macrociclo.semanas.find((s) => s.fechaInicio <= hoy && hoy <= s.fechaFin)
+      ?.id ?? null;
   const medidas = (macrociclo.medidasSnapshot as MedidasSnapshot | null) ?? null;
   const vo2max = getVo2maxInfo(
     (macrociclo.vo2maxSnapshot as Vo2maxSnapshot | null) ?? null,
+    persona.edad,
+    persona.sexo,
   );
 
-  // P-07/TASK-039: sesiones ya publicadas por el motor (SesionPlanificada),
-  // listas para registrar ejecución.
+  // ADR-50: sesiones creadas al activar el macrociclo (una por frecuencia
+  // semanal), listas para escribirles el WOD y registrar ejecución.
   const sesionesPlanificadas = await prisma.sesionPlanificada.findMany({
     where: { semana: { macrocicloId: id }, estado: { not: "omitida" } },
-    include: {
+    select: {
+      id: true,
+      orden: true,
+      estado: true,
+      wod: true,
       semana: { select: { numeroSemana: true, fechaInicio: true } },
-      _count: { select: { prescripciones: true } },
     },
     orderBy: [{ semana: { numeroSemana: "asc" } }, { orden: "asc" }],
     take: 20,
   });
+
+  const [proximaSesion, resumen] = await Promise.all([
+    obtenerProximaSesionPlanificada(id),
+    sesionesPlanificadas.length > 0 ? obtenerResumenMacrociclo(id) : Promise.resolve(null),
+  ]);
 
   return (
     <main className="space-y-8 pb-10">
@@ -210,6 +249,83 @@ export default async function MacrocicloDetallePage({
           <span className="capitalize">{macrociclo.estado}</span>
         </p>
       </header>
+
+      {proximaSesion ? (
+        <section className="space-y-2 rounded-3xl border border-accent/30 bg-accent/5 p-4 sm:p-5 dark:border-accent/30">
+          <div className="flex items-center">
+            <h2 className="text-lg font-semibold text-text-primary dark:text-white">
+              Próxima sesión
+            </h2>
+            <InfoTooltip text="La primera sesión de este macrociclo que todavía no se completó, en orden de semana, incluida una que ya abriste pero no terminaste (queda en 'parcial'). Antes había que buscarla a mano entre todas las sesiones del plan." />
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-text-primary dark:text-white">
+                Semana {proximaSesion.semana.numeroSemana} · Sesión {proximaSesion.orden}
+              </p>
+              <p className="text-xs text-text-secondary">
+                {proximaSesion.wod ? "WOD listo" : "WOD pendiente"}
+                {proximaSesion.estado === "parcial" ? " · en curso" : ""}
+              </p>
+            </div>
+            <PrimaryButton
+              href={`/entrenamiento/${proximaSesion.id}?cc=${encodeURIComponent(cc)}`}
+              className="w-auto px-4 py-2 text-sm"
+            >
+              {proximaSesion.estado === "parcial" ? "Continuar" : "Registrar"}
+            </PrimaryButton>
+          </div>
+        </section>
+      ) : null}
+
+      {sesionesPlanificadas.length > 0 ? (
+        <details className="space-y-3 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
+          <summary className="cursor-pointer text-lg font-semibold text-text-primary dark:text-white">
+            Todas las sesiones ({sesionesPlanificadas.length})
+          </summary>
+          <div className="mt-3 divide-y divide-gray-200 dark:divide-white/10">
+            {sesionesPlanificadas.map((sp) => (
+              <div
+                key={sp.id}
+                className="flex flex-wrap items-center justify-between gap-2 py-3"
+              >
+                <div>
+                  <p className="text-sm font-medium text-text-primary dark:text-white">
+                    Semana {sp.semana.numeroSemana} · Sesión {sp.orden}
+                  </p>
+                  <p className="text-xs text-text-secondary">
+                    {sp.wod ? "WOD listo" : "WOD pendiente"} ·{" "}
+                    <span className="capitalize">{sp.estado}</span>
+                  </p>
+                </div>
+                <PrimaryButton
+                  href={`/entrenamiento/${sp.id}?cc=${encodeURIComponent(cc)}`}
+                  className="w-auto px-4 py-2 text-sm"
+                >
+                  {sp.estado === "realizada"
+                    ? "Ver registro"
+                    : sp.estado === "parcial"
+                      ? "Continuar"
+                      : "Registrar"}
+                </PrimaryButton>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
+
+      {puedeEditar && sesionesPlanificadas.length === 0 ? (
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-500/20 dark:bg-blue-950/30 dark:text-blue-200">
+          <p className="font-medium">Este macrociclo todavía no tiene sesiones para entrenar.</p>
+          <p className="mt-1">
+            Las sesiones se crean automáticamente al activar el macrociclo, una por cada
+            sesión de la frecuencia semanal que ya definiste en el asistente. Termina el
+            asistente y actívalo para que aparezcan aquí.
+          </p>
+        </div>
+      ) : null}
+
+      {resumen ? <ResumenMacrociclo resumen={resumen} /> : null}
 
       <section className="rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -297,6 +413,9 @@ export default async function MacrocicloDetallePage({
               <>
                 <p className="font-medium text-text-primary dark:text-white">
                   {vo2max.metodoLabel} · {vo2max.valor}
+                  {vo2max.clasificacion.label !== "Sin datos"
+                    ? ` · ${vo2max.clasificacion.label}`
+                    : ""}
                 </p>
                 {vo2max.detalles.map((detalle) => (
                   <p key={detalle} className="text-sm text-text-secondary">
@@ -508,7 +627,7 @@ export default async function MacrocicloDetallePage({
                         href={`/macrociclo/${id}/mesociclo/${mesociclo.id}/carga?cc=${encodeURIComponent(cc)}`}
                         className="text-sm font-medium text-accent hover:underline"
                       >
-                        {mesociclo.carga ? "Editar ✓" : "Dosificar"}
+                        {mesociclo.objetivoBloque ? "Editar ✓" : "Definir"}
                       </Link>
                     </td>
                   </tr>
@@ -556,9 +675,19 @@ export default async function MacrocicloDetallePage({
               </thead>
               <tbody className="divide-y divide-gray-200 bg-bg-soft dark:divide-white/8">
                 {macrociclo.semanas.map((semana) => (
-                  <tr key={semana.id}>
+                  <tr
+                    key={semana.id}
+                    className={
+                      semana.id === semanaActualId ? "bg-accent/10" : undefined
+                    }
+                  >
                     <td className="px-4 py-3 text-text-primary dark:text-white">
                       {semana.numeroSemana}
+                      {semana.id === semanaActualId ? (
+                        <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-white">
+                          Actual
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-text-secondary">
                       {toISODate(semana.fechaInicio)} - {toISODate(semana.fechaFin)}
@@ -653,48 +782,7 @@ export default async function MacrocicloDetallePage({
         </section>
       ) : null}
 
-      {sesionesPlanificadas.length > 0 ? (
-        <section className="space-y-3 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
-          <h2 className="text-lg font-semibold text-text-primary dark:text-white">
-            Sesiones planificadas
-          </h2>
-          <div className="divide-y divide-gray-200 dark:divide-white/10">
-            {sesionesPlanificadas.map((sp) => (
-              <div
-                key={sp.id}
-                className="flex flex-wrap items-center justify-between gap-2 py-3"
-              >
-                <div>
-                  <p className="text-sm font-medium text-text-primary dark:text-white">
-                    Semana {sp.semana.numeroSemana} · Sesión {sp.orden}
-                  </p>
-                  <p className="text-xs text-text-secondary">
-                    {sp._count.prescripciones} ejercicio(s) ·{" "}
-                    <span className="capitalize">{sp.estado}</span>
-                  </p>
-                </div>
-                <PrimaryButton
-                  href={`/entrenamiento/${sp.id}?cc=${encodeURIComponent(cc)}`}
-                  className="w-auto px-4 py-2 text-sm"
-                >
-                  {sp.estado === "realizada" ? "Ver registro" : "Registrar"}
-                </PrimaryButton>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
       <div className="flex flex-col flex-wrap gap-3 sm:flex-row">
-        {puedeEditar ? (
-          <PrimaryButton
-            href={`/macrociclo/${id}/generar?cc=${encodeURIComponent(cc)}`}
-            className="sm:w-auto"
-          >
-            Generar plan automáticamente
-          </PrimaryButton>
-        ) : null}
-
         {puedeEditar ? (
           <PrimaryButton
             href={`/macrociclo/${id}/editar?cc=${encodeURIComponent(cc)}`}

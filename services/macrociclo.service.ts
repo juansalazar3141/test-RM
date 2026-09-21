@@ -26,10 +26,7 @@ import {
   modoCalendarioDe,
   type PerfilDeportivo,
 } from "@/lib/planificacion/perfil";
-import {
-  type CargaMesocicloInputData,
-  validarCargaMesociclo,
-} from "@/lib/mesociclo-carga";
+import { validarObjetivoBloque } from "@/lib/planificacion/objetivo-bloque";
 
 export type AuditContext = {
   userType: "persona" | "admin";
@@ -803,6 +800,17 @@ export async function guardarPeriodizacion({
       }
 
       // ---------- Semanas + ejercicios (diff por numeroSemana) ----------
+      // Perf: guardarPeriodizacion corre en UNA transacción interactiva con
+      // timeout fijo (ver `$transaction` más abajo). Hacer un round-trip por
+      // semana y otro por cada ejercicio de cada semana escala como
+      // O(semanas × ejercicios). Con un macrociclo largo (p.ej. 29-31
+      // semanas, típico en objetivos "salud"/"sin_competencia") eso son 150+
+      // round-trips secuenciales, suficientes para agotar el timeout de la
+      // transacción a mitad de camino. Cuando eso pasa, MariaDB hace rollback
+      // de lo ya insertado pero el código sigue enviando la siguiente
+      // consulta, que entonces falla con un FK "fantasma" (referencia una
+      // fila que existía hace un instante). Por eso se agrupan las
+      // creaciones en bloque (`createMany`) en vez de una por una.
       const semanasExistentes = await tx.macrocicloSemana.findMany({
         where: { macrocicloId: id },
         select: { id: true, numeroSemana: true, fechaFin: true },
@@ -811,6 +819,13 @@ export async function guardarPeriodizacion({
         semanasExistentes.map((s) => [s.numeroSemana, s]),
       );
       const semanasInputMap = new Map(semanas.map((s) => [s.numeroSemana, s]));
+
+      const semanasAGuardar: Array<{
+        numeroSemana: number;
+        idExistente?: number;
+        data: Prisma.MacrocicloSemanaCreateManyInput;
+        ejercicios: SemanaInput["ejercicios"];
+      }> = [];
 
       for (const semanaCalculada of calculado.semanas) {
         const existente = semanaExistentePorNumero.get(
@@ -882,51 +897,139 @@ export async function guardarPeriodizacion({
           notas: semanaInput?.notas ?? semanaCalculada.notas,
         };
 
-        let semanaId: number;
-        if (existente) {
-          await tx.macrocicloSemana.update({ where: { id: existente.id }, data });
-          semanaId = existente.id;
-        } else {
-          const creada = await tx.macrocicloSemana.create({ data });
-          semanaId = creada.id;
+        semanasAGuardar.push({
+          numeroSemana: semanaCalculada.numeroSemana,
+          idExistente: existente?.id,
+          data,
+          ejercicios: semanaInput?.ejercicios ?? [],
+        });
+      }
+
+      const semanasNuevas = semanasAGuardar.filter((s) => !s.idExistente);
+      const semanasParaActualizar = semanasAGuardar.filter(
+        (s) => s.idExistente,
+      );
+
+      if (semanasNuevas.length > 0) {
+        await tx.macrocicloSemana.createMany({
+          data: semanasNuevas.map((s) => s.data),
+        });
+      }
+      for (const s of semanasParaActualizar) {
+        await tx.macrocicloSemana.update({
+          where: { id: s.idExistente! },
+          data: s.data,
+        });
+      }
+
+      // Resolver en un solo round-trip los ids que MariaDB asignó a las
+      // semanas recién creadas (createMany no los devuelve).
+      const semanaIdPorNumero = new Map<number, number>(
+        semanasParaActualizar.map((s) => [s.numeroSemana, s.idExistente!]),
+      );
+      if (semanasNuevas.length > 0) {
+        const creadas = await tx.macrocicloSemana.findMany({
+          where: {
+            macrocicloId: id,
+            numeroSemana: { in: semanasNuevas.map((s) => s.numeroSemana) },
+          },
+          select: { id: true, numeroSemana: true },
+        });
+        for (const c of creadas) {
+          semanaIdPorNumero.set(c.numeroSemana, c.id);
         }
+      }
 
-        const ejerciciosInput = semanaInput?.ejercicios ?? [];
-        const ejercicioIdsNuevos = ejerciciosInput.map((e) => e.ejercicioId);
+      // ---------- Ejercicios de todas las semanas afectadas, en bloque ----------
+      const semanaIdsAfectadas = [...semanaIdPorNumero.values()];
+      const ejerciciosExistentes = semanaIdsAfectadas.length > 0
+        ? await tx.macrocicloSemanaEjercicio.findMany({
+            where: { macrocicloSemanaId: { in: semanaIdsAfectadas } },
+          })
+        : [];
+      const ejercicioExistentePorClave = new Map(
+        ejerciciosExistentes.map((e) => [
+          `${e.macrocicloSemanaId}:${e.ejercicioId}`,
+          e,
+        ]),
+      );
 
-        for (const e of ejerciciosInput) {
-          await tx.macrocicloSemanaEjercicio.upsert({
-            where: {
-              macrocicloSemanaId_ejercicioId: {
-                macrocicloSemanaId: semanaId,
-                ejercicioId: e.ejercicioId,
-              },
-            },
-            create: {
+      const ejerciciosACrear: Prisma.MacrocicloSemanaEjercicioCreateManyInput[] =
+        [];
+      const ejerciciosAActualizar: Array<{
+        id: number;
+        data: {
+          formulaRm: string;
+          rm: number;
+          peso: number;
+          volumen: number;
+        };
+      }> = [];
+      const clavesDeseadas = new Set<string>();
+
+      for (const s of semanasAGuardar) {
+        const semanaId = semanaIdPorNumero.get(s.numeroSemana);
+        if (!semanaId) continue;
+
+        // Si el input trae el mismo ejercicio repetido, el último gana
+        // (mismo comportamiento que el upsert secuencial anterior).
+        const ejerciciosPorId = new Map(
+          s.ejercicios.map((e) => [e.ejercicioId, e]),
+        );
+
+        for (const e of ejerciciosPorId.values()) {
+          const clave = `${semanaId}:${e.ejercicioId}`;
+          clavesDeseadas.add(clave);
+          const existenteEj = ejercicioExistentePorClave.get(clave);
+          if (!existenteEj) {
+            ejerciciosACrear.push({
               macrocicloSemanaId: semanaId,
               ejercicioId: e.ejercicioId,
               formulaRm: e.formulaRm,
               rm: e.rm,
               peso: e.peso,
               volumen: e.volumen,
-            },
-            update: {
-              formulaRm: e.formulaRm,
-              rm: e.rm,
-              peso: e.peso,
-              volumen: e.volumen,
-            },
-          });
+            });
+          } else if (
+            existenteEj.formulaRm !== e.formulaRm ||
+            existenteEj.rm !== e.rm ||
+            existenteEj.peso !== e.peso ||
+            existenteEj.volumen !== e.volumen
+          ) {
+            ejerciciosAActualizar.push({
+              id: existenteEj.id,
+              data: {
+                formulaRm: e.formulaRm,
+                rm: e.rm,
+                peso: e.peso,
+                volumen: e.volumen,
+              },
+            });
+          }
         }
+      }
 
-        if (existente) {
-          await tx.macrocicloSemanaEjercicio.deleteMany({
-            where: {
-              macrocicloSemanaId: semanaId,
-              ejercicioId: { notIn: ejercicioIdsNuevos },
-            },
-          });
-        }
+      if (ejerciciosACrear.length > 0) {
+        await tx.macrocicloSemanaEjercicio.createMany({
+          data: ejerciciosACrear,
+        });
+      }
+      for (const u of ejerciciosAActualizar) {
+        await tx.macrocicloSemanaEjercicio.update({
+          where: { id: u.id },
+          data: u.data,
+        });
+      }
+
+      const ejerciciosIdsABorrar = ejerciciosExistentes
+        .filter(
+          (e) => !clavesDeseadas.has(`${e.macrocicloSemanaId}:${e.ejercicioId}`),
+        )
+        .map((e) => e.id);
+      if (ejerciciosIdsABorrar.length > 0) {
+        await tx.macrocicloSemanaEjercicio.deleteMany({
+          where: { id: { in: ejerciciosIdsABorrar } },
+        });
       }
 
       // Semanas a borrar: solo futuras (las pasadas están protegidas) y que
@@ -963,7 +1066,10 @@ export async function guardarPeriodizacion({
         },
       });
     },
-    { timeout: 20000, maxWait: 10000 },
+    // 60s de margen (antes 20s): aun con las creaciones en bloque, un
+    // macrociclo muy largo (30+ semanas) o una conexión lenta a la base no
+    // deberían agotar el timeout de la transacción interactiva.
+    { timeout: 60000, maxWait: 15000 },
   );
 
   return calculado;
@@ -1004,6 +1110,11 @@ export async function activarMacrociclo({
     data: { estado: "activo" },
   });
 
+  // ADR-50: activar ya no depende de "generar plan" — las sesiones son
+  // simples huecos para el WOD, uno por cada sesión de la `frecuencia` que
+  // el entrenador ya definió al guardar la periodización.
+  await crearSesionesPlanificadas(id, personaId);
+
   await auditarMacrociclo({
     macrocicloId: id,
     personaId,
@@ -1012,6 +1123,36 @@ export async function activarMacrociclo({
   });
 
   return actualizado;
+}
+
+/**
+ * ADR-50 · Crea las `SesionPlanificada` que falten a partir de la
+ * `frecuencia` ya guardada en cada `MacrocicloSemana` — sin periodización
+ * ni prescripción por ejercicio (eso lo decide el entrenador al escribir el
+ * WOD, ADR-49). Idempotente: no duplica sesiones ya creadas.
+ */
+export async function crearSesionesPlanificadas(macrocicloId: number, personaId: number) {
+  const [semanas, persona] = await Promise.all([
+    prisma.macrocicloSemana.findMany({
+      where: { macrocicloId },
+      select: { id: true, frecuencia: true },
+      orderBy: { numeroSemana: "asc" },
+    }),
+    prisma.persona.findUnique({ where: { id: personaId }, select: { minutosPorSesion: true } }),
+  ]);
+
+  const duracionEstimadaMin = persona?.minutosPorSesion ?? 60;
+
+  for (const semana of semanas) {
+    const existentes = await prisma.sesionPlanificada.count({ where: { semanaId: semana.id } });
+    const faltantes = Math.max(0, semana.frecuencia - existentes);
+
+    for (let i = 0; i < faltantes; i++) {
+      await prisma.sesionPlanificada.create({
+        data: { semanaId: semana.id, orden: existentes + i + 1, duracionEstimadaMin },
+      });
+    }
+  }
 }
 
 export async function obtenerMacrocicloPorId(id: number) {
@@ -1039,7 +1180,6 @@ export async function obtenerMacrocicloPorId(id: number) {
         orderBy: { orden: "asc" },
         include: {
           semanas: { orderBy: { numeroSemana: "asc" } },
-          carga: true,
         },
       },
       semanas: {
@@ -1111,7 +1251,8 @@ export async function obtenerCargaMesociclo(mesocicloId: number) {
   });
 }
 
-export async function guardarCargaMesociclo({
+/** ADR-47 · Reemplaza a `guardarCargaMesociclo` (minutos × direcciones, retirado). */
+export async function guardarObjetivoBloqueMesociclo({
   macrocicloId,
   personaId,
   mesocicloId,
@@ -1121,59 +1262,188 @@ export async function guardarCargaMesociclo({
   macrocicloId: number;
   personaId: number;
   mesocicloId: number;
-  data: CargaMesocicloInputData;
+  data: unknown;
   context: AuditContext;
 }) {
   const mesociclo = await prisma.macrocicloMesociclo.findFirst({
     where: { id: mesocicloId, macrocicloId, macrociclo: { personaId } },
-    include: {
-      macrociclo: { select: { id: true, personaId: true } },
-      semanas: true,
-    },
   });
 
   if (!mesociclo) {
     throw new Error("Mesociclo no encontrado.");
   }
 
-  const semanas = mesociclo.semanas.map((s) => ({
-    numeroSemana: s.numeroSemana,
-    frecuencia: s.frecuencia,
-  }));
-
-  const validado = validarCargaMesociclo(data, semanas);
+  const validado = validarObjetivoBloque(data);
   if (!validado.ok) {
     throw new Error(validado.error);
   }
 
-  const actualizado = await prisma.mesocicloCarga.upsert({
-    where: { mesocicloId },
-    create: {
-      mesocicloId,
-      tiempoSesionMin: validado.data.tiempoSesionMin,
-      direcciones: validado.data.direcciones as Prisma.InputJsonValue,
-      volumen: validado.data.volumen as Prisma.InputJsonValue,
-      microciclos: validado.data.microciclos as Prisma.InputJsonValue,
-      sesiones: validado.data.sesiones as Prisma.InputJsonValue,
-    },
-    update: {
-      tiempoSesionMin: validado.data.tiempoSesionMin,
-      direcciones: validado.data.direcciones as Prisma.InputJsonValue,
-      volumen: validado.data.volumen as Prisma.InputJsonValue,
-      microciclos: validado.data.microciclos as Prisma.InputJsonValue,
-      sesiones: validado.data.sesiones as Prisma.InputJsonValue,
+  const actualizado = await prisma.macrocicloMesociclo.update({
+    where: { id: mesocicloId },
+    data: {
+      objetivoBloque: validado.data.objetivoBloque,
+      intensidadMinPct: validado.data.intensidadMinPct,
+      intensidadMaxPct: validado.data.intensidadMaxPct,
+      repsMin: validado.data.repsMin,
+      repsMax: validado.data.repsMax,
+      rirObjetivo: validado.data.rirObjetivo,
+      progresion: validado.data.progresion,
+      seriesSemanalesPorPatron: validado.data
+        .seriesSemanalesPorPatron as Prisma.InputJsonValue,
     },
   });
 
   await auditarMacrociclo({
     macrocicloId,
     personaId,
-    action: "carga_mesociclo_guardada",
+    action: "objetivo_bloque_mesociclo_guardado",
     metadata: { mesocicloId },
     before: undefined,
-    after: validado.data as Record<string, unknown>,
+    after: validado.data as unknown as Record<string, unknown>,
     context,
   });
 
   return actualizado;
+}
+
+/**
+ * "Sesión de hoy": la próxima `SesionPlanificada` aún no registrada,
+ * ordenada por semana/orden. Antes había que abrir el detalle del
+ * macrociclo y buscarla a mano entre hasta 20 sesiones ya mezcladas con las
+ * ya hechas — esto es lo que se muestra destacado arriba de esa lista y en
+ * el dashboard.
+ */
+export async function obtenerProximaSesionPlanificada(macrocicloId: number) {
+  return prisma.sesionPlanificada.findFirst({
+    // Incluye "parcial": abrir la pantalla de registro ya la marca parcial
+    // (RegistroSesion crea la SesionRealizada al montar), aunque el
+    // entrenador no haya llegado a escribir el WOD ni completarla. Filtrar
+    // solo por "planificada" hacía que la sesión desapareciera de esta
+    // tarjeta apenas se abría una vez — justo cuando más falta hacía
+    // encontrarla de nuevo.
+    where: { semana: { macrocicloId }, estado: { in: ["planificada", "parcial"] } },
+    orderBy: [{ semana: { numeroSemana: "asc" } }, { orden: "asc" }],
+    select: {
+      id: true,
+      orden: true,
+      wod: true,
+      estado: true,
+      semana: { select: { numeroSemana: true, fechaInicio: true } },
+    },
+  });
+}
+
+export type ResumenMacrociclo = {
+  rango: { desde: Date; hasta: Date };
+  rm: Array<{
+    ejercicioId: number;
+    ejercicioNombre: string;
+    inicioKg: number | null;
+    actualKg: number | null;
+    deltaPct: number | null;
+  }>;
+  adherencia: {
+    total: number;
+    realizadas: number;
+    parciales: number;
+    omitidas: number;
+    pendientes: number;
+    debidas: number;
+    porcentajeAdherencia: number | null;
+  };
+};
+
+/**
+ * M9 (mínimo viable) · Resumen del macrociclo: qué pasó con la fuerza y la
+ * adherencia desde que se armó el plan. No existía ninguna vista de esto —
+ * cerrar un macrociclo era solo cambiar un estado, sin ningún dato que
+ * justifique cómo armar el siguiente bloque.
+ *
+ * El RM "al inicio" se lee de `RmVigente` vigente en `fechaInicio` (no del
+ * `rmSnapshot` JSON legado): es la fuente que el propio proyecto documenta
+ * como autoritativa (ADR de RmVigente), y permite reconstruir el valor
+ * histórico exacto gracias a que es append-only.
+ *
+ * ADR-51: "tonelaje registrado" y "ajustes propuestos" se retiraron de este
+ * resumen — dependían de `SerieRealizada` con `ejercicioId`/`rir`, que el
+ * registro de sesión ya no genera por defecto desde ADR-50 (el WOD es
+ * texto libre). Mostrar esos dos en 0 siempre era más confuso que útil.
+ */
+export async function obtenerResumenMacrociclo(
+  macrocicloId: number,
+): Promise<ResumenMacrociclo> {
+  const macrociclo = await prisma.macrociclo.findUniqueOrThrow({
+    where: { id: macrocicloId },
+    select: { id: true, personaId: true, fechaInicio: true, fechaFin: true },
+  });
+
+  const [rmInicio, rmActual, sesiones] = await Promise.all([
+    prisma.rmVigente.findMany({
+      where: {
+        personaId: macrociclo.personaId,
+        validoDesde: { lte: macrociclo.fechaInicio },
+        OR: [{ validoHasta: null }, { validoHasta: { gt: macrociclo.fechaInicio } }],
+      },
+      select: { ejercicioId: true, valorKg: true, ejercicio: { select: { nombre: true } } },
+    }),
+    prisma.rmVigente.findMany({
+      where: { personaId: macrociclo.personaId, validoHasta: null },
+      select: { ejercicioId: true, valorKg: true, ejercicio: { select: { nombre: true } } },
+    }),
+    prisma.sesionPlanificada.findMany({
+      where: { semana: { macrocicloId } },
+      select: { estado: true, semana: { select: { fechaInicio: true } } },
+    }),
+  ]);
+
+  const inicioPorEjercicio = new Map(rmInicio.map((r) => [r.ejercicioId, r]));
+  const actualPorEjercicio = new Map(rmActual.map((r) => [r.ejercicioId, r]));
+  const ejercicioIds = new Set([...inicioPorEjercicio.keys(), ...actualPorEjercicio.keys()]);
+
+  const rm = [...ejercicioIds]
+    .map((ejercicioId) => {
+      const inicio = inicioPorEjercicio.get(ejercicioId) ?? null;
+      const actual = actualPorEjercicio.get(ejercicioId) ?? null;
+      const deltaPct =
+        inicio && actual && inicio.valorKg > 0
+          ? ((actual.valorKg - inicio.valorKg) / inicio.valorKg) * 100
+          : null;
+      return {
+        ejercicioId,
+        ejercicioNombre:
+          actual?.ejercicio.nombre ?? inicio?.ejercicio.nombre ?? `Ejercicio ${ejercicioId}`,
+        inicioKg: inicio?.valorKg ?? null,
+        actualKg: actual?.valorKg ?? null,
+        deltaPct,
+      };
+    })
+    .sort((a, b) => a.ejercicioNombre.localeCompare(b.ejercicioNombre));
+
+  const hoy = new Date();
+  let realizadas = 0;
+  let parciales = 0;
+  let omitidas = 0;
+  let pendientes = 0;
+  let debidas = 0;
+  for (const s of sesiones) {
+    if (s.estado === "realizada") realizadas++;
+    else if (s.estado === "parcial") parciales++;
+    else if (s.estado === "omitida") omitidas++;
+    else pendientes++;
+    if (s.semana.fechaInicio <= hoy) debidas++;
+  }
+
+  return {
+    rango: { desde: macrociclo.fechaInicio, hasta: macrociclo.fechaFin },
+    rm,
+    adherencia: {
+      total: sesiones.length,
+      realizadas,
+      parciales,
+      omitidas,
+      pendientes,
+      debidas,
+      porcentajeAdherencia: debidas > 0 ? (realizadas / debidas) * 100 : null,
+    },
+  };
 }
