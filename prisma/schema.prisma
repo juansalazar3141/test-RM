@@ -17,23 +17,69 @@ model Persona {
   edad         Int
   talla        Float
   entrenado    Boolean
+  nivelOverride       String?
+  faseEntrenamiento   String?
+  faseInicioAt        DateTime?
+
+  // C-12/TASK-025: disponibilidad y contexto del atleta — insumo directo del
+  // motor de planificación (M5). faseEntrenamiento/faseInicioAt quedan
+  // deprecados (D-14): su función la absorbe el mesociclo activo.
+  mesesEntrenamiento  Int       @default(0)
+  diasDisponibles     Int       @default(3)
+  minutosPorSesion    Int       @default(60)
+  equipamiento        Json?     // string[]
+  limitaciones         String?
+
+  // Entrenador que registró al atleta. Determina qué entrenador puede verlo
+  // en sus listados; los admin ven todos los atletas sin importar el dueño.
+  entrenadorId String?
+  entrenador   User?   @relation(fields: [entrenadorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sesiones Sesion[]
+  sesiones    Sesion[]
+  macrociclos Macrociclo[]
+  rmVigentes  RmVigente[]
+  sesionesRealizadas SesionRealizada[]
+  ajustesPropuestos AjustePropuesto[]
 
   @@index([createdAt])
+  @@index([entrenadorId])
 }
 
 model Ejercicio {
-  id                   Int    @id
+  id                   Int    @id @default(autoincrement())
   nombre               String
   porcentajeMasaHombre Float
   porcentajeMasaMujer  Float
 
-  resultados ResultadoEjercicio[]
+  // Semántica del catálogo (C-01, TASK-013) — sin esto el motor de
+  // planificación no puede seleccionar ejercicios por patrón ni redondear
+  // cargas al incremento real del equipo. Ver docs/PLAN-MAESTRO.md §3.2.
+  patron               String  @default("accesorio") // sentadilla|bisagra|empuje_horizontal|empuje_vertical|traccion_horizontal|traccion_vertical|core|accesorio|cardio
+  musculoPrimario      String  @default("")
+  musculosSecundarios  Json? // string[]
+  equipamiento         String  @default("otro") // barra|mancuerna|maquina|polea|peso_corporal|otro
+  incrementoMinimoKg   Float   @default(2.5)
+  admitePorcentajeRm   Boolean @default(true)
+  esDeTiempo           Boolean @default(false)
+  esUnilateral         Boolean @default(false)
+  enBateriaEvaluacion  Boolean @default(true)
+  activo               Boolean @default(true)
+  // Los protocolos directos admiten nombres libres. Estas filas preservan
+  // la relación histórica/RM sin publicar el ejercicio en el catálogo.
+  esEjercicioLibre     Boolean @default(false)
+
+  resultados                  ResultadoEjercicio[]
+  macrocicloSemanaEjercicios  MacrocicloSemanaEjercicio[]
+  rmVigentes                  RmVigente[]
+  prescripciones               Prescripcion[]
+  seriesRealizadas             SerieRealizada[]
 
   @@index([nombre])
+  @@index([patron])
+  @@index([esEjercicioLibre, nombre])
 }
 
 model Sesion {
@@ -50,7 +96,8 @@ model Sesion {
 
   persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
-  resultados ResultadoEjercicio[]
+  resultados  ResultadoEjercicio[]
+  macrociclos Macrociclo[]
 
   @@index([personaId, createdAt])
 }
@@ -61,6 +108,7 @@ model ResultadoEjercicio {
   ejercicioId  Int
   repeticiones Int
   carga        Float
+  pesoEquipo   Float @default(0)
 
   epley    Float
   brzycki  Float
@@ -73,13 +121,50 @@ model ResultadoEjercicio {
   casas    Float
   nacleiro Float
 
+  // C-03/TASK-018: estimador puntual único con confianza explícita.
+  rm1Estimado     Float?
+  confianza       String? // alta|media|baja
+  formulaPrimaria String? // p.ej. "epley"
+  fueraDeRango    Boolean @default(false)
+  rirReportado    Int?
+
   createdAt DateTime @default(now())
 
   sesion    Sesion    @relation(fields: [sesionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   ejercicio Ejercicio @relation(fields: [ejercicioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  rmVigentes RmVigente[]
 
   @@index([sesionId, createdAt])
   @@index([ejercicioId])
+}
+
+/// C-05/TASK-019 — pieza central de M4: responde "¿cuál es el 1RM vigente de
+/// este atleta en este ejercicio, hoy, y de dónde salió?". Append-only: un
+/// RM nuevo no actualiza la fila, cierra la anterior (validoHasta) y abre
+/// una nueva (lib/rm/vigente.ts, services/rm.service.ts). Esto es lo que
+/// garantiza que un cambio de RM no reescribe prescripciones ya emitidas
+/// (§4.1 PLAN-MAESTRO.md).
+model RmVigente {
+  id          Int       @id @default(autoincrement())
+  personaId   Int
+  ejercicioId Int
+  valorKg     Float
+  origen      String // test_directo|estimacion|e1rm_entrenamiento|manual
+  confianza   String // alta|media|baja
+  resultadoRmId Int?
+  serieRealizadaId Int?
+  validoDesde DateTime
+  validoHasta DateTime?
+  calculadoEn DateTime  @default(now())
+
+  persona         Persona             @relation(fields: [personaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  ejercicio       Ejercicio           @relation(fields: [ejercicioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  resultadoRm     ResultadoEjercicio? @relation(fields: [resultadoRmId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  serieRealizada  SerieRealizada?     @relation(fields: [serieRealizadaId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  prescripciones  Prescripcion[]
+
+  @@index([personaId, ejercicioId, validoDesde])
+  @@index([personaId, ejercicioId, validoHasta])
 }
 
 model AdminOtp {
@@ -98,5 +183,350 @@ model User {
   id        String   @id @default(cuid())
   username  String   @unique
   password  String
+  role      String   @default("entrenador") // "admin" | "entrenador"
   createdAt DateTime @default(now())
+
+  personasRegistradas Persona[]
+}
+
+model Macrociclo {
+  id                Int      @id @default(autoincrement())
+  personaId         Int
+  objetivoTipo      String // "salud" | "competencia"
+  objetivoDetalle   String?
+
+  // ADR-37 · Perfil deportivo: los tres descriptores que hacen que un mismo
+  // motor sirva a cualquier deporte sin mantener un catálogo de deportes.
+  // Ver lib/planificacion/perfil.ts.
+  capacidadDominante   String? // fuerza_potencia|resistencia|mixto_intermitente|tecnico_estetico
+  estructuraCalendario String? // pico_unico|doble_pico|temporada_larga|sin_competencia
+  nivelAtleta          String? // beginner|intermediate|advanced
+  fechaInicio       DateTime @db.Date
+  fechaFin          DateTime @db.Date
+  fechaCompetencia  DateTime? @db.Date
+  estado            String // "borrador" | "activo" | "cerrado" | "eliminado"
+  pasoActual        Int      @default(1)
+  sesionRmId        Int?
+  rmSnapshot        Json?
+  medidasSnapshot   Json?
+  vo2maxSnapshot    Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  closedAt          DateTime?
+  closedReason      String? // "manual" | "auto_competencia"
+  deletedAt         DateTime?
+
+  // §3.6/TASK-035: distingue si el plan salió del motor (M5) o del wizard
+  // manual — necesario mientras conviven los dos caminos (Estado
+  // Intermedio B, §12). version se incrementa en cada regeneración.
+  generadoEn DateTime?
+  version    Int       @default(1)
+
+  persona    Persona              @relation(fields: [personaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sesionRm   Sesion?              @relation(fields: [sesionRmId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  periodos     MacrocicloPeriodo[]
+  mesociclos   MacrocicloMesociclo[]
+  competencias MacrocicloCompetencia[]
+  semanas    MacrocicloSemana[]
+  auditLogs  MacrocicloAuditLog[]
+  ajustesPropuestos AjustePropuesto[]
+
+  @@index([personaId, estado])
+}
+
+/// ADR-38 · Calendario real de competencias. Antes solo existía
+/// `Macrociclo.fechaCompetencia`, un único campo: con él no se puede
+/// representar ni una liga de varios meses ni un año de doble pico, y es el
+/// calendario lo que determina si la periodización es simple, doble o de
+/// temporada. También es lo que permite colocar el taper donde toca.
+model MacrocicloCompetencia {
+  id           Int      @id @default(autoincrement())
+  macrocicloId Int
+  nombre       String
+  fecha        DateTime @db.Date
+  importancia  String   // "principal" | "secundaria"
+  notas        String?
+  createdAt    DateTime @default(now())
+
+  macrociclo Macrociclo @relation(fields: [macrocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([macrocicloId, fecha])
+}
+
+model MacrocicloPeriodo {
+  id           Int     @id @default(autoincrement())
+  macrocicloId Int
+  tipo         String // "preparatorio" | "competitivo" | "transitorio"
+  porcentaje   Float
+  fechaInicio  DateTime @db.Date
+  fechaFin     DateTime @db.Date
+  orden        Int
+
+  macrociclo Macrociclo        @relation(fields: [macrocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  etapas     MacrocicloEtapa[]
+
+  @@index([macrocicloId, orden])
+}
+
+model MacrocicloEtapa {
+  id          Int     @id @default(autoincrement())
+  periodoId   Int
+  tipo        String // "general" | "especifica" | "precompetitiva" | "competitiva" | "transitoria"
+  porcentaje  Float
+  fechaInicio DateTime @db.Date
+  fechaFin    DateTime @db.Date
+  orden       Int
+
+  periodo MacrocicloPeriodo @relation(fields: [periodoId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([periodoId, orden])
+}
+
+model MacrocicloMesociclo {
+  id           Int     @id @default(autoincrement())
+  macrocicloId Int
+  tipo         String // "entrante" | "desarrollador" | "desarrollador_especifico" | "estabilizador" | "precompetitivo" | "choque" | "aproximacion" | "competencia" | "transitorio"
+  porcentaje   Float
+  fechaInicio  DateTime @db.Date
+  fechaFin     DateTime @db.Date
+  orden        Int
+
+  // C-06/TASK-033: objetivo de bloque — lo que el motor de planificación
+  // (M5) necesita para prescribir. Antes `tipo` era solo una etiqueta sin
+  // semántica computacional.
+  objetivoBloque         String? // fuerza_maxima|hipertrofia|resistencia_fuerza|potencia|acumulacion|realizacion|recuperacion
+  intensidadMinPct       Float?
+  intensidadMaxPct       Float?
+  repsMin                Int?
+  repsMax                Int?
+  rirObjetivo            Int?
+  seriesSemanalesPorPatron Json? // { [patron]: series }
+  progresion             String? // lineal_intensidad|lineal_volumen|ondulante|mantenimiento
+
+  macrociclo Macrociclo        @relation(fields: [macrocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  semanas    MacrocicloSemana[]
+  carga      MesocicloCarga?
+
+  @@index([macrocicloId, orden])
+}
+
+model MesocicloCarga {
+  id              Int      @id @default(autoincrement())
+  mesocicloId     Int      @unique
+  tiempoSesionMin Int
+  direcciones     Json // [{ id: string, nombre: string }]
+  volumen         Json // { [direccionId]: porcentaje } — debe sumar 100
+  microciclos     Json // { [direccionId]: { [numeroSemana]: porcentaje } } — suma 100 por dirección
+  sesiones        Json // { [direccionId]: { [numeroSemana]: { [sesionIdx]: porcentaje } } } — suma 100 por semana
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  mesociclo MacrocicloMesociclo @relation(fields: [mesocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+}
+
+model MacrocicloSemana {
+  id             Int     @id @default(autoincrement())
+  macrocicloId   Int
+  mesocicloId    Int
+  numeroSemana   Int
+  mesCalendario  Int
+  fechaInicio    DateTime @db.Date
+  fechaFin       DateTime @db.Date
+  tipoMicrociclo String // "evaluacion" | "corriente" | "competitivo" | "precompetitivo" | "choque" | "recuperacion" | "aproximacion" | "taper"
+  frecuencia     Int
+  series         Int     @default(0)
+  repeticiones   Int     @default(0)
+  volumen        Float // kilogramos (calculado)
+  intensidad     Float // 0 a 100
+  notas          String?
+
+  // C-07/TASK-033.
+  esDeload        Boolean @default(false)
+  factorVolumen   Float   @default(1)
+  factorIntensidad Float  @default(1)
+  origen          String  @default("generado") // generado|ajustado
+
+  macrociclo Macrociclo                   @relation(fields: [macrocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  mesociclo  MacrocicloMesociclo           @relation(fields: [mesocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  ejercicios MacrocicloSemanaEjercicio[]
+  sesiones   SesionPlanificada[]
+
+  @@index([macrocicloId, numeroSemana])
+  @@index([mesocicloId])
+}
+
+/// C-08/TASK-033 — la unidad que el atleta abre el día del entrenamiento.
+/// Antes faltaba: se saltaba de semana a ejercicio directamente, sin poder
+/// repartir series entre sesiones ni cerrar el ciclo con la ejecución.
+model SesionPlanificada {
+  id                  Int      @id @default(autoincrement())
+  semanaId            Int
+  orden               Int // 1..frecuencia
+  fechaSugerida       DateTime? @db.Date
+  duracionEstimadaMin Int
+  enfoque             String?
+  // ADR-49: el motor ya no elige ejercicios ni calcula cargas — el
+  // entrenador escribe aquí el WOD real de la sesión (qué ejercicios, en
+  // qué orden, con qué esquema), usando la zona de %1RM/reps/RIR del
+  // mesociclo y los patrones de `enfoque` como referencia.
+  wod                 String?  @db.Text
+  estado              String   @default("planificada") // planificada|realizada|parcial|omitida
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  semana            MacrocicloSemana  @relation(fields: [semanaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  prescripciones    Prescripcion[]
+  sesionesRealizadas SesionRealizada[]
+
+  @@unique([semanaId, orden])
+  @@index([semanaId])
+}
+
+/// C-09/TASK-034 — evolución de MacrocicloSemanaEjercicio: qué debe hacer el
+/// atleta en un ejercicio de una sesión, con trazabilidad completa al RM que
+/// la originó (rmUsadoKg + rmVigenteId) y versionado (§4.1: una prescripción
+/// publicada es inmutable; un ajuste crea `version + 1` y encadena
+/// `supersededById`, nunca reescribe la fila anterior).
+model Prescripcion {
+  id                  Int     @id @default(autoincrement())
+  sesionPlanificadaId Int
+  ejercicioId         Int
+  orden               Int
+  series              Int
+  repeticionesObjetivo Int
+  repsMin             Int
+  repsMax             Int
+  porcentajeRm        Float?
+  rirObjetivo         Int
+  cargaKg             Float?
+  descansoSeg         Int     @default(90)
+  tempo               String?
+  notas               String?
+
+  rmUsadoKg    Float?
+  rmVigenteId  Int?
+  formulaRm    String?
+  calculadoEn  DateTime @default(now())
+  origen       String // generado|ajustado_entrenador|autorregulado
+  motivoAjuste String?
+  version      Int      @default(1)
+  supersededById Int?   @unique
+
+  sesionPlanificada SesionPlanificada @relation(fields: [sesionPlanificadaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  ejercicio         Ejercicio         @relation(fields: [ejercicioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  rmVigente         RmVigente?        @relation(fields: [rmVigenteId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  supersededBy      Prescripcion?     @relation("PrescripcionVersion", fields: [supersededById], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  supersedeA        Prescripcion?     @relation("PrescripcionVersion")
+  seriesRealizadas  SerieRealizada[]
+
+  @@index([sesionPlanificadaId])
+  @@index([ejercicioId])
+}
+
+/// C-10/TASK-036 — M7: lo que realmente ocurrió. Antes no existía ninguna
+/// entidad que registrara la ejecución (D-12) — sin esto no hay progresión
+/// real, autorregulación, ni verificación de adherencia.
+model SesionRealizada {
+  id                  Int       @id @default(autoincrement())
+  sesionPlanificadaId Int?
+  personaId           Int
+  fecha               DateTime
+  duracionMin         Int?
+  rpeSesion           Int?
+  estado              String // completa|parcial|omitida
+  motivoOmision       String?
+  notas               String?
+  createdAt           DateTime  @default(now())
+
+  sesionPlanificada SesionPlanificada? @relation(fields: [sesionPlanificadaId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  persona           Persona            @relation(fields: [personaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  series            SerieRealizada[]
+
+  @@index([personaId, fecha])
+  @@index([sesionPlanificadaId])
+}
+
+/// C-10/TASK-036 — el dato atómico de ejecución. Alimenta RmVigente (origen
+/// e1rm_entrenamiento, F-03) y el motor de autorregulación (Bloque K).
+model SerieRealizada {
+  id                Int      @id @default(autoincrement())
+  sesionRealizadaId Int
+  prescripcionId    Int?
+  ejercicioId       Int
+  numeroSerie       Int
+  cargaKg           Float
+  repeticiones      Int
+  rir               Int?
+  fallo             Boolean  @default(false)
+  e1rmKg            Float?
+  /// TASK-038: idempotencia del registro rápido desde el móvil (mismo patrón que Sesion.requestId).
+  requestId         String?  @unique
+  createdAt         DateTime @default(now())
+
+  sesionRealizada SesionRealizada @relation(fields: [sesionRealizadaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  prescripcion    Prescripcion?   @relation(fields: [prescripcionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  ejercicio       Ejercicio       @relation(fields: [ejercicioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  rmVigentes      RmVigente[]
+
+  @@index([sesionRealizadaId])
+  @@index([ejercicioId])
+}
+
+model MacrocicloSemanaEjercicio {
+  id                 Int     @id @default(autoincrement())
+  macrocicloSemanaId Int
+  ejercicioId        Int
+  formulaRm          String
+  rm                 Float
+  peso               Float
+  volumen            Float
+
+  macrocicloSemana MacrocicloSemana @relation(fields: [macrocicloSemanaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  ejercicio        Ejercicio        @relation(fields: [ejercicioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([macrocicloSemanaId, ejercicioId])
+  @@index([ejercicioId])
+}
+
+model MacrocicloAuditLog {
+  id           Int      @id @default(autoincrement())
+  macrocicloId Int
+  personaId    Int
+  adminId      String?
+  userType     String // "persona" | "admin"
+  action       String
+  metadata     Json?
+  before       Json?
+  after        Json?
+  createdAt    DateTime @default(now())
+
+  macrociclo Macrociclo @relation(fields: [macrocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([macrocicloId, createdAt])
+  @@index([personaId, createdAt])
+}
+
+/// C-11/TASK-049 — M8: materializa la propuesta del sistema para que el
+/// humano decida. "El sistema nunca cambia solo una prescripción ya
+/// publicada al atleta. Propone; el humano confirma." (§1.8 PLAN-MAESTRO.md)
+model AjustePropuesto {
+  id            Int       @id @default(autoincrement())
+  personaId     Int
+  macrocicloId  Int
+  alcance       String // prescripcion|sesion|semana|mesociclo
+  objetivoId    Int // id de la Prescripcion/SesionPlanificada/MacrocicloSemana/MacrocicloMesociclo según `alcance`
+  tipo          String // subir_carga|bajar_carga|subir_volumen|bajar_volumen|deload|reevaluar_rm
+  magnitud      Float?
+  justificacion String
+  evidencia     Json
+  estado        String    @default("pendiente") // pendiente|aceptado|rechazado
+  resueltoPor   String?
+  resueltoEn    DateTime?
+  createdAt     DateTime  @default(now())
+
+  persona    Persona    @relation(fields: [personaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  macrociclo Macrociclo @relation(fields: [macrocicloId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([personaId, estado])
+  @@index([macrocicloId, estado])
 }

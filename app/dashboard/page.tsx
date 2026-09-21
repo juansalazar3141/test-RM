@@ -1,34 +1,30 @@
 import { redirect } from "next/navigation";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { PrismaClient } from "@prisma/client";
+import Link from "next/link";
 
+import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { ICCSection } from "@/components/dashboard/ICCSection";
 import { IMCCard } from "@/components/dashboard/IMCCard";
+import { DashboardLevelCard } from "@/components/dashboard/DashboardLevelCard";
 import { DashboardSessionsSection } from "@/components/dashboard/DashboardSessionsSection";
+import { RetestReminderBanner } from "@/components/dashboard/RetestReminderBanner";
+import { evaluarVigencia } from "@/lib/rm/vigente";
+import { SummaryMetrics } from "@/components/dashboard/SummaryMetrics";
+import { DisponibilidadCard } from "@/components/dashboard/DisponibilidadCard";
 import { FloatingActionButton } from "@/components/ui/FloatingActionButton";
+import { FormSubmitButton } from "@/components/ui/FormSubmitButton";
 import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
 import { DashboardGuide } from "./DashboardGuide";
 import { calculateIMC, getIMCClassification } from "@/helpers/calculations";
-
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-
-function createPrismaClient() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is not configured");
-  }
-
-  const adapter = new PrismaMariaDb(databaseUrl);
-  return new PrismaClient({ adapter });
-}
-
-const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
+import { iniciarMacrocicloAction } from "@/actions/macrociclo";
+import {
+  obtenerMacrocicloAbierto,
+  obtenerMacrociclosPorPersona,
+  obtenerProximaSesionPlanificada,
+} from "@/services/macrociclo.service";
+import { getUserLevel, isUserLevel } from "@/lib/user-level";
 
 function formatSessionCardDate(date: Date) {
   return new Intl.DateTimeFormat("es-ES", {
@@ -36,15 +32,6 @@ function formatSessionCardDate(date: Date) {
     month: "long",
     year: "numeric",
   }).format(date);
-}
-
-function formatValue(value: number, unit?: string) {
-  const formatted = new Intl.NumberFormat("es-CO", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(value);
-
-  return unit ? `${formatted} ${unit}` : formatted;
 }
 
 function formatDaysAgo(date: Date) {
@@ -119,11 +106,17 @@ export default async function DashboardPage({
     resolvedSearchParams.deleted === "1" ||
     resolvedSearchParams.deleted === "true" ||
     resolvedSearchParams.deleted === "deleted";
+  const rawSesionId = resolvedSearchParams.sesionId;
+  const savedSesionId =
+    typeof rawSesionId === "string" && Number.isInteger(Number(rawSesionId))
+      ? Number(rawSesionId)
+      : undefined;
 
   if (!cc) {
-    redirect("/");
+    redirect("/atletas");
   }
 
+  const authUser = await getAuthUserFromCookies();
   const persona = await prisma.persona.findUnique({
     where: { cc },
     select: {
@@ -135,11 +128,18 @@ export default async function DashboardPage({
       talla: true,
       cintura: true,
       cadera: true,
+      nivelOverride: true,
+      mesesEntrenamiento: true,
+      diasDisponibles: true,
+      minutosPorSesion: true,
+      equipamiento: true,
+      limitaciones: true,
+      entrenadorId: true,
     },
   });
 
-  if (!persona) {
-    redirect("/");
+  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
+    redirect("/atletas");
   }
 
   const sesiones = await prisma.sesion.findMany({
@@ -163,21 +163,73 @@ export default async function DashboardPage({
     },
   });
 
+  const [macrocicloAbierto, macrociclos, ajustesPendientes, rmVigentesActivos] = await Promise.all([
+    obtenerMacrocicloAbierto(persona.id),
+    obtenerMacrociclosPorPersona(persona.id),
+    prisma.ajustePropuesto.count({ where: { personaId: persona.id, estado: "pendiente" } }),
+    prisma.rmVigente.findMany({
+      where: { personaId: persona.id, validoHasta: null },
+      include: { ejercicio: { select: { nombre: true } } },
+    }),
+  ]);
+
+  const proximaSesion =
+    macrocicloAbierto && macrocicloAbierto.estado === "activo"
+      ? await obtenerProximaSesionPlanificada(macrocicloAbierto.id)
+      : null;
+
+  // R-15/TASK-052: aviso de reevaluación por ejercicio, no por días desde la
+  // última sesión (D-01 también contaminaba este banner).
+  const rmsCaducados = rmVigentesActivos
+    .map((rm) => ({
+      ejercicioNombre: rm.ejercicio.nombre,
+      ...evaluarVigencia({ validoDesde: rm.validoDesde, confianza: rm.confianza }),
+    }))
+    .filter((rm) => rm.caducado);
+
   const progress = getProgressSummary(sesiones);
   const latestSession = sesiones[0];
   const imc = calculateIMC(persona);
   const imcClassification = getIMCClassification(imc);
   const newSessionHref = `/nueva-sesion?cc=${encodeURIComponent(cc)}`;
-  const sessionItems = sesiones.map((sesion, index) => {
+
+  // D-01: ya no se deriva un "RM global" tomando el máximo entre ejercicios
+  // distintos (ver docs/PLAN-MAESTRO.md §0.2). Sesion.finalRM solo queda
+  // poblado cuando hay un único ejercicio de referencia (Casas/Nacleiro, o
+  // una evaluación de un solo ejercicio); en cualquier otro caso no hay un
+  // valor global válido y getUserLevel usa su valor por defecto seguro.
+  const latestGlobalRM =
+    typeof latestSession?.finalRM === "number" && latestSession.finalRM > 0
+      ? latestSession.finalRM
+      : 0;
+  const autoLevel = getUserLevel(latestGlobalRM, latestSession?.peso ?? null);
+  const nivelOverride = isUserLevel(persona.nivelOverride)
+    ? persona.nivelOverride
+    : null;
+
+  const latestSesionHref = latestSession
+    ? `/sesion/${latestSession.id}?cc=${encodeURIComponent(cc)}`
+    : null;
+  const macrocicloResumen = macrocicloAbierto
+    ? macrocicloAbierto.objetivoTipo === "competencia"
+      ? `Competencia: ${new Intl.DateTimeFormat("es-ES", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        }).format(macrocicloAbierto.fechaCompetencia ?? macrocicloAbierto.fechaFin)}`
+      : `Objetivo salud hasta ${new Intl.DateTimeFormat("es-ES", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        }).format(macrocicloAbierto.fechaFin)}`
+    : "";
+  const sessionItems = sesiones.map((sesion) => {
     const exerciseCount = sesion.resultados.length;
     return {
       id: sesion.id,
       href: `/sesion/${sesion.id}?cc=${encodeURIComponent(cc)}`,
       fecha: formatSessionCardDate(sesion.createdAt),
-      nombre:
-        index === 0
-          ? "Sesión más reciente"
-          : `Sesión ${sesiones.length - index}`,
+      nombre: `Sesión del ${formatSessionCardDate(sesion.createdAt)}`,
       resumen:
         exerciseCount === 1
           ? "1 ejercicio registrado"
@@ -196,37 +248,51 @@ export default async function DashboardPage({
             ? `Última sesión: ${formatDaysAgo(latestSession.createdAt)}`
             : "Última sesión: sin sesiones"}
         </p>
-        <div className="grid grid-cols-1 gap-1 rounded-xl border border-gray-200 bg-bg-main px-4 py-3 sm:grid-cols-3 sm:gap-4 dark:border-white/10 dark:bg-bg-soft">
-          <MetricRow label="Identificación" value={persona.cc} compact />
-          <MetricRow
-            label="Peso"
-            value={formatValue(persona.masaCorporal, "kg")}
-            compact
-          />
-          <MetricRow
-            label="Talla"
-            value={formatValue(persona.talla, "m")}
-            compact
-          />
-        </div>
+        <SummaryMetrics
+          cc={persona.cc}
+          masaCorporal={persona.masaCorporal}
+          talla={persona.talla}
+        />
+        <DisponibilidadCard
+          cc={persona.cc}
+          mesesEntrenamiento={persona.mesesEntrenamiento}
+          diasDisponibles={persona.diasDisponibles}
+          minutosPorSesion={persona.minutosPorSesion}
+          equipamiento={
+            Array.isArray(persona.equipamiento)
+              ? (persona.equipamiento as string[])
+              : []
+          }
+          limitaciones={persona.limitaciones}
+        />
       </header>
 
-      <IMCCard imc={imc} classification={imcClassification} />
+      <RetestReminderBanner
+        rmsCaducados={rmsCaducados}
+        newSessionHref={newSessionHref}
+      />
 
-      <ICCSection cc={cc} sexo={persona.sexo as "hombre" | "mujer" | "masculino" | "femenino"} cintura={persona.cintura} cadera={persona.cadera} />
-
-      <section className="space-y-4 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
-        <div className="space-y-1">
-          <h2 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
-            Nueva sesión
-          </h2>
-          <p className="text-sm text-text-secondary">
-            Guarda un entrenamiento para actualizar tu historial y revisar tus
-            resultados.
-          </p>
-        </div>
-        <PrimaryButton href={newSessionHref}>Crear nueva sesión</PrimaryButton>
-      </section>
+      {proximaSesion ? (
+        <Link
+          href={`/entrenamiento/${proximaSesion.id}?cc=${encodeURIComponent(cc)}`}
+          className="flex items-center justify-between gap-4 rounded-3xl border border-accent/30 bg-accent/5 p-4 transition hover:bg-accent/10 dark:border-accent/30 sm:p-5"
+        >
+          <div>
+            <p className="text-sm font-medium text-text-primary dark:text-white">
+              Próxima sesión: Semana {proximaSesion.semana.numeroSemana} · Sesión{" "}
+              {proximaSesion.orden}
+            </p>
+            <p className="text-sm text-text-secondary">
+              {proximaSesion.wod ? "WOD listo" : "WOD pendiente"}
+              {proximaSesion.estado === "parcial" ? " · en curso" : ""} · Toca para{" "}
+              {proximaSesion.estado === "parcial" ? "continuar" : "registrar"}
+            </p>
+          </div>
+          <span aria-hidden="true" className="text-lg text-text-tertiary">
+            →
+          </span>
+        </Link>
+      ) : null}
 
       <DashboardSessionsSection
         sessions={sessionItems}
@@ -234,7 +300,108 @@ export default async function DashboardPage({
         cc={cc}
         saved={saved}
         deleted={deleted}
+        savedSesionId={savedSesionId}
       />
+
+      <DashboardLevelCard
+        autoLevel={autoLevel}
+        nivelOverride={nivelOverride}
+        latestSesionHref={latestSesionHref}
+      />
+
+      <section className="space-y-4 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
+        <div className="space-y-1">
+          <h2 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
+            Nueva sesión de test de fuerza máxima (RM)
+          </h2>
+          <p className="text-sm text-text-secondary">
+            Determina tu fuerza máxima (RM) en diferentes ejercicios 
+            para obtener tus porcentajes de carga.
+          </p>
+        </div>
+        <PrimaryButton href={newSessionHref}>Crear nueva sesión</PrimaryButton>
+      </section>
+
+      {ajustesPendientes > 0 ? (
+        <Link
+          href={`/ajustes?cc=${encodeURIComponent(cc)}`}
+          className="block rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 transition hover:bg-amber-100 dark:border-amber-500/20 dark:bg-amber-950/30 dark:text-amber-200 sm:p-5"
+        >
+          {ajustesPendientes} ajuste{ajustesPendientes === 1 ? "" : "s"} propuesto
+          {ajustesPendientes === 1 ? "" : "s"} esperando tu decisión →
+        </Link>
+      ) : null}
+
+      <section className="space-y-4 rounded-3xl border border-gray-200 bg-bg-soft p-4 sm:p-5 dark:border-white/10">
+        <div className="space-y-1">
+          <h2 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
+            Macrociclo de entrenamiento
+          </h2>
+          <p className="text-sm text-text-secondary">
+            Planifica tu temporada con objetivos, periodos y mesociclos.
+          </p>
+        </div>
+
+        {macrocicloAbierto ? (
+          <div className="space-y-3">
+            {macrocicloAbierto.estado === "borrador" ? (
+              <>
+                <div className="rounded-2xl border border-gray-200 bg-bg-main p-4 dark:border-white/10 dark:bg-bg-soft">
+                  <p className="text-sm font-medium text-text-primary dark:text-white">
+                    Tienes un macrociclo en borrador
+                  </p>
+                  <p className="text-sm text-text-secondary">
+                    {macrocicloResumen}
+                  </p>
+                </div>
+                <PrimaryButton
+                  href={`/macrociclo/${macrocicloAbierto.id}/editar?cc=${encodeURIComponent(cc)}`}
+                >
+                  Continuar macrociclo
+                </PrimaryButton>
+              </>
+            ) : (
+              <Link
+                href={`/macrociclo/${macrocicloAbierto.id}?cc=${encodeURIComponent(cc)}`}
+                className="flex items-center justify-between gap-4 rounded-2xl border border-gray-200 bg-bg-main p-4 transition hover:bg-bg-subtle dark:border-white/10 dark:bg-bg-soft dark:hover:bg-bg-subtle"
+              >
+                <div>
+                  <p className="text-sm font-medium text-text-primary dark:text-white">
+                    Tienes un macrociclo activo
+                  </p>
+                  <p className="text-sm text-text-secondary">
+                    {macrocicloResumen}
+                  </p>
+                </div>
+                <span
+                  aria-hidden="true"
+                  className="text-lg text-text-tertiary"
+                >
+                  →
+                </span>
+              </Link>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-text-secondary">
+              {macrociclos.some((m) => m.estado === "cerrado")
+                ? "Tu último macrociclo está cerrado. Puedes iniciar uno nuevo."
+                : "Aún no tienes macrociclos registrados."}
+            </p>
+            <form action={iniciarMacrocicloAction}>
+              <input type="hidden" name="cc" value={cc} />
+              <FormSubmitButton pendingLabel="Creando macrociclo...">
+                Realizar macrociclo
+              </FormSubmitButton>
+            </form>
+          </div>
+        )}
+      </section>
+
+      <IMCCard imc={imc} classification={imcClassification} />
+
+      <ICCSection cc={cc} sexo={persona.sexo as "hombre" | "mujer" | "masculino" | "femenino"} cintura={persona.cintura} cadera={persona.cadera} />
 
       <Section title="Progreso inteligente">
         {progress.length === 0 ? (
@@ -260,15 +427,16 @@ export default async function DashboardPage({
       </div>
 
       <PrimaryButton
-        href="/"
+        href="/atletas"
         className="bg-bg-main text-text-secondary dark:bg-bg-main dark:text-text-secondary"
       >
         Cambiar usuario
       </PrimaryButton>
 
       <FloatingActionButton
-        href={newSessionHref}
-        label="+"
+        cc={cc}
+        macrocicloAbiertoId={macrocicloAbierto?.id}
+        macrocicloAbiertoEstado={macrocicloAbierto?.estado}
       />
     </main>
   );

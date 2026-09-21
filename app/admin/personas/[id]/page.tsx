@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Card } from "@/components/admin/Card";
 import { Table } from "@/components/admin/Table";
 import { formatDateTime } from "@/lib/admin";
+import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 type RouteParams = Promise<{ id: string }>;
@@ -20,6 +21,7 @@ export default async function PersonaDetailPage({
     notFound();
   }
 
+  const authUser = await getAuthUserFromCookies();
   const persona = await prisma.persona.findUnique({
     where: { id: personaId },
     include: {
@@ -39,7 +41,7 @@ export default async function PersonaDetailPage({
     },
   });
 
-  if (!persona) {
+  if (!persona || !puedeAccederAPersona(authUser, persona.entrenadorId)) {
     notFound();
   }
 
@@ -82,7 +84,7 @@ export default async function PersonaDetailPage({
                 className="space-y-3 rounded-xl border border-gray-200 bg-bg-main p-4 dark:border-white/8"
               >
                 <p className="text-sm text-text-secondary">
-                  Sesion #{sesion.id} - {formatDateTime(sesion.createdAt)}
+                  Sesión del {formatDateTime(sesion.createdAt)}
                 </p>
 
                 <Table
@@ -99,7 +101,7 @@ export default async function PersonaDetailPage({
                     "Wathen",
                     "Baechle",
                     "Casas",
-                    "Nacleiro",
+                    "Naclerio",
                   ]}
                   hasRows={sesion.resultados.length > 0}
                   emptyMessage="Sin resultados en esta sesion."

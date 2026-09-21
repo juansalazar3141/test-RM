@@ -2,9 +2,25 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 
 import { deleteSesionAction } from "@/actions/sesion";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { AppDialog } from "@/components/ui/AppDialog";
+
+function EliminarSesionButton() {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:hover:border-red-500/30 dark:hover:bg-red-950/30 dark:hover:text-red-200"
+    >
+      {pending ? "Eliminando..." : "Eliminar"}
+    </button>
+  );
+}
 
 type DashboardSession = {
   id: number;
@@ -20,6 +36,7 @@ type DashboardSessionsSectionProps = {
   cc: string;
   saved?: boolean;
   deleted?: boolean;
+  savedSesionId?: number;
 };
 
 const PREVIEW_LIMIT = 5;
@@ -30,10 +47,12 @@ export function DashboardSessionsSection({
   cc,
   saved = false,
   deleted = false,
+  savedSesionId,
 }: DashboardSessionsSectionProps) {
   const sectionRef = useRef<HTMLElement>(null);
   const [showAll, setShowAll] = useState(false);
   const [highlight, setHighlight] = useState(saved);
+  const [sessionToDelete, setSessionToDelete] = useState<DashboardSession | null>(null);
   const previewSessions = useMemo(
     () => sessions.slice(0, PREVIEW_LIMIT),
     [sessions],
@@ -70,7 +89,7 @@ export function DashboardSessionsSection({
       <header className="space-y-2">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <h2 className="text-xl font-semibold tracking-tight text-text-primary dark:text-white">
+            <h2 className="text-2xl font-bold tracking-tight text-text-primary dark:text-white">
               Mis sesiones
             </h2>
             <p className="text-sm text-text-secondary">
@@ -83,9 +102,17 @@ export function DashboardSessionsSection({
         </div>
 
         {saved ? (
-          <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-950/30 dark:text-emerald-200">
-            Sesión guardada correctamente
-          </p>
+          <div className="space-y-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-950/30 dark:text-emerald-200">
+            <p>Sesión guardada correctamente</p>
+            {savedSesionId ? (
+              <Link
+                href={`/sesion/${savedSesionId}?cc=${encodeURIComponent(cc)}`}
+                className="block font-bold uppercase tracking-wide underline underline-offset-4"
+              >
+                Dar click aquí para revisar sesión guardada
+              </Link>
+            ) : null}
+          </div>
         ) : deleted ? (
           <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-950/30 dark:text-emerald-200">
             Sesión eliminada correctamente
@@ -136,27 +163,13 @@ export function DashboardSessionsSection({
                     </p>
                   </Link>
                   <div className="flex shrink-0 items-center gap-3">
-                    <form
-                      action={deleteSesionAction}
-                      onSubmit={(event) => {
-                        if (
-                          !window.confirm(
-                            "¿Eliminar esta sesión? Esta acción no se puede deshacer.",
-                          )
-                        ) {
-                          event.preventDefault();
-                        }
-                      }}
+                    <button
+                      type="button"
+                      onClick={() => setSessionToDelete(session)}
+                      className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 dark:border-white/10 dark:hover:border-red-500/30 dark:hover:bg-red-950/30 dark:hover:text-red-200"
                     >
-                      <input type="hidden" name="sesionId" value={session.id} />
-                      <input type="hidden" name="cc" value={cc} />
-                      <button
-                        type="submit"
-                        className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 dark:border-white/10 dark:hover:border-red-500/30 dark:hover:bg-red-950/30 dark:hover:text-red-200"
-                      >
-                        Eliminar
-                      </button>
-                    </form>
+                      Eliminar
+                    </button>
                     <Link
                       href={session.href}
                       aria-label={`Abrir ${session.nombre}`}
@@ -187,6 +200,24 @@ export function DashboardSessionsSection({
           ) : null}
         </div>
       )}
+      <AppDialog
+        open={sessionToDelete !== null}
+        title="Eliminar sesión"
+        tone="danger"
+        onClose={() => setSessionToDelete(null)}
+        actions={
+          sessionToDelete ? (
+            <form action={deleteSesionAction}>
+              <input type="hidden" name="sesionId" value={sessionToDelete.id} />
+              <input type="hidden" name="cc" value={cc} />
+              <EliminarSesionButton />
+            </form>
+          ) : null
+        }
+      >
+        ¿Quieres eliminar la sesión del {sessionToDelete?.fecha}? Esta acción
+        no se puede deshacer.
+      </AppDialog>
     </section>
   );
 }

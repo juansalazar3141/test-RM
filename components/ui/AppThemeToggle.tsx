@@ -1,31 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
 import { ThemeToggle } from "./ThemeToggle";
 
 export function AppThemeToggle() {
-  const [isDark, setIsDark] = useState(false);
+  // El servidor no puede leer localStorage, así que siempre asume "dark"
+  // (igual que hacía el theme-script por defecto) — el primer render en el
+  // cliente debe arrancar en el mismo valor o React marca un hydration
+  // mismatch. useLayoutEffect corrige el valor real (ya aplicado al <html>
+  // por ThemeScript antes del primer pintado) antes de que el navegador
+  // pinte, así que no hay parpadeo visible.
+  const [isDark, setIsDark] = useState(true);
 
-  useEffect(() => {
-    const savedTheme = window.localStorage.getItem("theme");
-    const prefersDark = savedTheme !== "light";
-    setIsDark(prefersDark);
+  useLayoutEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsDark(document.documentElement.classList.contains("dark"));
   }, []);
 
-  useEffect(() => {
-    const root = document.documentElement;
-    if (isDark) {
-      root.classList.add("dark");
-      window.localStorage.setItem("theme", "dark");
-      return;
-    }
+  function handleToggle() {
+    setIsDark((prev) => {
+      const next = !prev;
+      const root = document.documentElement;
+      root.classList.toggle("dark", next);
+      window.localStorage.setItem("theme", next ? "dark" : "light");
+      return next;
+    });
+  }
 
-    root.classList.remove("dark");
-    window.localStorage.setItem("theme", "light");
-  }, [isDark]);
-
-  return (
-    <ThemeToggle isDark={isDark} onToggle={() => setIsDark((prev) => !prev)} />
-  );
+  return <ThemeToggle isDark={isDark} onToggle={handleToggle} />;
 }

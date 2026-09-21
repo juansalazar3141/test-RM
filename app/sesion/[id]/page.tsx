@@ -8,10 +8,24 @@ import { UserLevelPersonalization } from "@/components/results/UserLevelPersonal
 import { MetricRow } from "@/components/ui/MetricRow";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Section } from "@/components/ui/Section";
-import { calculateRepetitionValue, calculateStrengthIndex } from "@/lib/rm";
-import { getUserLevel } from "@/lib/user-level";
+import { getStrengthLevel } from "@/helpers/calculations";
+import { EXERCISE_NOTES } from "@/lib/ejercicios-config";
+import {
+  calculateRepetitionValue,
+  calculateStrengthIndex,
+} from "@/lib/rm";
+import { calculateEpley } from "@/lib/rm/formulas";
+import { resolverFaseActiva } from "@/lib/planificacion/fase";
+import { MESES_POR_TIPO_LABEL, type TipoMesociclo } from "@/lib/macrociclo";
+import { getUserLevel, isUserLevel } from "@/lib/user-level";
+import { getAuthUserFromCookies, puedeAccederAPersona } from "@/lib/auth";
 
-const EXERCISES_WITHOUT_LOAD = new Set([4]);
+const formatoFechaBloque = new Intl.DateTimeFormat("es-CO", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC", // las fronteras de mesociclo son columnas `@db.Date`
+});
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -49,28 +63,6 @@ function formatNumber(value: number) {
   }).format(value);
 }
 
-function getEstimatedRM(result: {
-  epley: number;
-  brzycki: number;
-  lombardi: number;
-  lander: number;
-  oconnor: number;
-  mayhew: number;
-  wathen: number;
-  baechle: number;
-}) {
-  return Math.max(
-    result.epley,
-    result.brzycki,
-    result.lombardi,
-    result.lander,
-    result.oconnor,
-    result.mayhew,
-    result.wathen,
-    result.baechle,
-  );
-}
-
 function getFormulaRows(result: {
   epley: number;
   brzycki: number;
@@ -95,7 +87,10 @@ function getFormulaRows(result: {
 
 function getMethodLabel(method: string) {
   if (method === "casas") return "Protocolo Casas";
-  if (method === "nacleiro") return "Test Nacleiro";
+  // "nacleiro" es la grafía de sesiones históricas (ADR-31).
+  if (method === "naclerio" || method === "nacleiro") {
+    return "Test de Naclerio";
+  }
   return "Estimación";
 }
 
@@ -149,12 +144,17 @@ export default async function SesionDetailPage({
     redirect("/dashboard");
   }
 
+  const authUser = await getAuthUserFromCookies();
   const sesion = await prisma.sesion.findUnique({
     where: { id: sesionId },
     include: {
       persona: {
         select: {
+          id: true,
+          cc: true,
           sexo: true,
+          nivelOverride: true,
+          entrenadorId: true,
         },
       },
       resultados: {
@@ -162,6 +162,7 @@ export default async function SesionDetailPage({
           ejercicio: {
             select: {
               nombre: true,
+              esDeTiempo: true,
             },
           },
         },
@@ -172,22 +173,67 @@ export default async function SesionDetailPage({
     },
   });
 
-  if (!sesion) {
+  if (!sesion || !puedeAccederAPersona(authUser, sesion.persona.entrenadorId)) {
     redirect("/dashboard");
   }
 
   const dashboardHref = cc
     ? `/dashboard?cc=${encodeURIComponent(cc)}`
     : "/dashboard";
+  // D-01/TASK-024: ya no se deriva un RM global tomando el máximo entre
+  // ejercicios distintos. sesion.finalRM solo queda poblado cuando es
+  // inequívoco (un único ejercicio evaluado, o un protocolo Casas/Nacleiro).
   const globalRM =
     typeof sesion.finalRM === "number" && sesion.finalRM > 0
       ? sesion.finalRM
-      : sesion.resultados.length > 0
-        ? Math.max(
-            ...sesion.resultados.map((resultado) => getEstimatedRM(resultado)),
-          )
-        : 0;
+      : 0;
   const autoLevel = getUserLevel(globalRM, sesion.peso);
+  const nivelOverride = isUserLevel(sesion.persona.nivelOverride)
+    ? sesion.persona.nivelOverride
+    : null;
+  // ADR-36 · D-14: la fase sale del mesociclo del macrociclo abierto cuyo
+  // rango de fechas contiene hoy, no de `Persona.faseEntrenamiento` (que era
+  // un valor fijo escrito una sola vez en la primera sesión).
+  const macrocicloAbierto = await prisma.macrociclo.findFirst({
+    where: {
+      personaId: sesion.persona.id,
+      estado: { in: ["borrador", "activo"] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      estado: true,
+      mesociclos: {
+        select: {
+          id: true,
+          tipo: true,
+          objetivoBloque: true,
+          fechaInicio: true,
+          fechaFin: true,
+          orden: true,
+        },
+        orderBy: { orden: "asc" },
+      },
+    },
+  });
+
+  const faseActiva = resolverFaseActiva(macrocicloAbierto?.mesociclos ?? []);
+  const faseResumen = faseActiva
+    ? {
+        fase: faseActiva.fase,
+        objetivoBloque: faseActiva.objetivoBloque,
+        mesociclo:
+          MESES_POR_TIPO_LABEL[faseActiva.tipoMesociclo as TipoMesociclo] ??
+          faseActiva.tipoMesociclo,
+        posicion: faseActiva.posicion,
+        total: faseActiva.total,
+        diasRestantes: faseActiva.diasRestantes,
+        fechaFin: formatoFechaBloque.format(faseActiva.fechaFin),
+        macrocicloId: macrocicloAbierto?.id ?? null,
+        esBorrador: macrocicloAbierto?.estado === "borrador",
+      }
+    : null;
+  const tieneMacrocicloAbierto = Boolean(macrocicloAbierto);
   const protocolSummary = getProtocolSummary(sesion.protocolData);
   const strengthIndex = calculateStrengthIndex(
     sesion.resultados.map((resultado) => ({
@@ -218,15 +264,11 @@ export default async function SesionDetailPage({
             value={`${sesion.trainingMonths} meses`}
             compact
           />
-          <MetricRow
-            label="RM final"
-            value={globalRM > 0 ? `${formatNumber(globalRM)} kg` : "Pendiente"}
-            compact
-          />
+    
           {sesion.resultados.length > 0 ? (
             <MetricRow
               label="Indice de fuerza"
-              value={`${strengthIndex.total} · ${strengthIndex.label}`}
+              value={`${strengthIndex.total}% · ${strengthIndex.label}`}
               tone="positive"
               compact
             />
@@ -302,20 +344,36 @@ export default async function SesionDetailPage({
         )
       ) : (
         <div className="space-y-6">
-          <UserLevelPersonalization autoLevel={autoLevel} />
+          <UserLevelPersonalization
+            autoLevel={autoLevel}
+            initialOverride={nivelOverride}
+            cc={sesion.persona.cc}
+          />
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {sesion.resultados.map((resultado) => {
-              const estimatedRM = getEstimatedRM(resultado);
+              // D-02/TASK-024 · H-13: la estimación principal es siempre la
+              // fórmula primaria (Epley). `rm1Estimado` puede
+              // faltar en filas históricas previas al backfill (C-03); antes
+              // no debe caer al máximo de las fórmulas, que sería un estimador
+              // sesgado. Ahora se recalcula Epley desde
+              // la carga y las repeticiones ya guardadas — el mismo criterio
+              // que usa `prisma/backfill-resultados.ts`.
+              const esHistoricoSinEstimacion = resultado.rm1Estimado === null;
+              const estimatedRM =
+                resultado.rm1Estimado ??
+                calculateEpley(resultado.carga, resultado.repeticiones);
               const formulaRows = getFormulaRows(resultado);
-              const withoutLoad = EXERCISES_WITHOUT_LOAD.has(
-                resultado.ejercicioId,
-              );
+              const withoutLoad = resultado.ejercicio.esDeTiempo;
               const repetitionValue = calculateRepetitionValue(
                 resultado.repeticiones,
                 resultado.ejercicioId,
                 sesion.persona.sexo,
               );
+              const strengthLevel = withoutLoad
+                ? null
+                : getStrengthLevel(estimatedRM, sesion.peso ?? 0);
+              const pesoLevantado = resultado.carga - resultado.pesoEquipo;
 
               return (
                 <article
@@ -323,9 +381,16 @@ export default async function SesionDetailPage({
                   className="space-y-4 rounded-xl border border-gray-200 bg-bg-soft p-4 dark:border-white/6"
                 >
                 <header className="space-y-1">
-                  <h2 className="text-base font-semibold text-text-primary dark:text-white">
-                    {resultado.ejercicio.nombre}
-                  </h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-base font-semibold text-text-primary dark:text-white">
+                      {resultado.ejercicio.nombre}
+                    </h2>
+                    {strengthLevel ? (
+                      <span className="rounded-full bg-bg-subtle px-2 py-0.5 text-xs font-semibold text-text-primary dark:text-white">
+                        {strengthLevel}
+                      </span>
+                    ) : null}
+                  </div>
                   <p className="text-sm text-text-secondary">
                     {withoutLoad ? (
                       `${resultado.repeticiones} repeticiones en 1 minuto`
@@ -337,11 +402,22 @@ export default async function SesionDetailPage({
                       </>
                     )}
                   </p>
+                  {!withoutLoad && resultado.pesoEquipo > 0 ? (
+                    <p className="text-xs text-text-tertiary">
+                      Levantado: {formatNumber(pesoLevantado)} kg + Equipo:{" "}
+                      {formatNumber(resultado.pesoEquipo)} kg
+                    </p>
+                  ) : null}
+                  {EXERCISE_NOTES[resultado.ejercicioId] ? (
+                    <p className="text-xs text-text-tertiary">
+                      {EXERCISE_NOTES[resultado.ejercicioId]}
+                    </p>
+                  ) : null}
                 </header>
 
-                <Section title="Valor para indice de fuerza" className="space-y-2">
+                <Section title="Ponderación para índice de fuerza" className="space-y-2">
                   <MetricRow
-                    label="Valor"
+                    label="Ponderación"
                     value={String(repetitionValue)}
                     compact
                   />
@@ -349,36 +425,90 @@ export default async function SesionDetailPage({
 
                 {!withoutLoad ? (
                   <>
-                    <Section title="Estimaciones de peso máximo (1RM)" className="space-y-2">
-                      <div className="space-y-0.5">
-                        {formulaRows.map((formula) => (
-                          <MetricRow
-                            key={formula.label}
-                            label={formula.label}
-                            value={`${formatNumber(formula.value)} kg`}
-                            compact
-                          />
-                        ))}
-                        {resultado.casas > 0 ? (
-                          <MetricRow
-                            label="Protocolo Casas"
-                            value={`${formatNumber(resultado.casas)} kg`}
-                            tone="positive"
-                            compact
-                          />
-                        ) : null}
-                        {resultado.nacleiro > 0 ? (
-                          <MetricRow
-                            label="Test Nacleiro"
-                            value={`${formatNumber(resultado.nacleiro)} kg`}
-                            tone="positive"
-                            compact
-                          />
-                        ) : null}
-                      </div>
+                    <Section title="Resultado principal (1RM)" className="space-y-2">
+                      <MetricRow
+                        label="1RM estimado"
+                        value={`${formatNumber(estimatedRM)} kg`}
+                        tone="positive"
+                        compact
+                      />
+                      {esHistoricoSinEstimacion ? (
+                        <p className="text-xs leading-5 text-text-tertiary">
+                          Sesión histórica: el 1RM se recalculó con la fórmula
+                          primaria a partir del peso y las repeticiones guardados.
+                        </p>
+                      ) : null}
+                      {resultado.confianza ? (
+                        <MetricRow
+                          label="Confianza"
+                          value={
+                            resultado.confianza === "alta"
+                              ? "Alta"
+                              : resultado.confianza === "media"
+                                ? "Media"
+                                : "Baja"
+                          }
+                          compact
+                        />
+                      ) : null}
+                      {typeof resultado.rirReportado === "number" ? (
+                        <p className="text-xs leading-5 text-text-tertiary">
+                          Reportaste {resultado.rirReportado}{" "}
+                          {resultado.rirReportado === 1
+                            ? "repetición"
+                            : "repeticiones"}{" "}
+                          en reserva, así que el cálculo usó{" "}
+                          {resultado.repeticiones + resultado.rirReportado}{" "}
+                          repeticiones equivalentes al fallo.
+                        </p>
+                      ) : null}
+                      {resultado.fueraDeRango ? (
+                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                          Repeticiones fuera de la ventana válida: esta
+                          estimación tiene menor certeza y no reemplazó tu RM
+                          de trabajo.
+                        </p>
+                      ) : null}
+                      {resultado.casas > 0 ? (
+                        <MetricRow
+                          label="Protocolo Casas"
+                          value={`${formatNumber(resultado.casas)} kg`}
+                          tone="positive"
+                          compact
+                        />
+                      ) : null}
+                      {resultado.nacleiro > 0 ? (
+                        <MetricRow
+                          label="Test de Naclerio"
+                          value={`${formatNumber(resultado.nacleiro)} kg`}
+                          tone="positive"
+                          compact
+                        />
+                      ) : null}
+                      <details className="mt-2 text-sm">
+                        <summary className="cursor-pointer text-text-secondary">
+                          Ver las 8 fórmulas
+                        </summary>
+                        <div className="mt-2 space-y-0.5">
+                          {formulaRows.map((formula) => (
+                            <MetricRow
+                              key={formula.label}
+                              label={formula.label}
+                              value={`${formatNumber(formula.value)} kg`}
+                              compact
+                            />
+                          ))}
+                        </div>
+                      </details>
                     </Section>
 
-                    <TrainingRecommendations rm={estimatedRM} level={autoLevel} />
+                    <TrainingRecommendations
+                      rm={estimatedRM}
+                      autoLevel={autoLevel}
+                      initialOverride={nivelOverride}
+                      faseActiva={faseResumen}
+                      tieneMacrocicloAbierto={tieneMacrocicloAbierto}
+                    />
                   </>
                 ) : null}
                 </article>
@@ -391,7 +521,7 @@ export default async function SesionDetailPage({
       <div className="space-y-4">
         <PrimaryButton href={dashboardHref}>Volver a mi panel</PrimaryButton>
         <PrimaryButton
-          href="/"
+          href="/atletas"
           className="bg-bg-main text-text-secondary dark:bg-bg-main dark:text-text-secondary"
         >
           Cambiar usuario
